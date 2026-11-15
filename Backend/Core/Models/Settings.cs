@@ -839,6 +839,12 @@ namespace Segra.Backend.Core.Models
             }
         }
 
+        [JsonPropertyName("recordingStartSoundEnabled")]
+        public bool RecordingStartSoundEnabled { get; set; } = true;
+
+        [JsonPropertyName("clipSavedSoundEnabled")]
+        public bool ClipSavedSoundEnabled { get; set; } = true;
+
         [JsonPropertyName("showNewBadgeOnVideos")]
         public bool ShowNewBadgeOnVideos
         {

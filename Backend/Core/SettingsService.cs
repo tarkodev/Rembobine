@@ -382,6 +382,20 @@ namespace Segra.Backend.Core
                 hasChanges = true;
             }
 
+            if (settings.RecordingStartSoundEnabled != updatedSettings.RecordingStartSoundEnabled)
+            {
+                Log.Information($"RecordingStartSoundEnabled changed from '{settings.RecordingStartSoundEnabled}' to '{updatedSettings.RecordingStartSoundEnabled}'");
+                settings.RecordingStartSoundEnabled = updatedSettings.RecordingStartSoundEnabled;
+                hasChanges = true;
+            }
+
+            if (settings.ClipSavedSoundEnabled != updatedSettings.ClipSavedSoundEnabled)
+            {
+                Log.Information($"ClipSavedSoundEnabled changed from '{settings.ClipSavedSoundEnabled}' to '{updatedSettings.ClipSavedSoundEnabled}'");
+                settings.ClipSavedSoundEnabled = updatedSettings.ClipSavedSoundEnabled;
+                hasChanges = true;
+            }
+
             if (settings.ShowNewBadgeOnVideos != updatedSettings.ShowNewBadgeOnVideos)
             {
                 Log.Information($"ShowNewBadgeOnVideos changed from '{settings.ShowNewBadgeOnVideos}' to '{updatedSettings.ShowNewBadgeOnVideos}'");

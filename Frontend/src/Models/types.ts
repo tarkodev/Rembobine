@@ -408,6 +408,8 @@ export interface Settings {
   autoRecordGames: boolean; // When false, don't auto-start recording when a game launches
   gameIntegrations: GameIntegrations;
   soundEffectsVolume: number; // Volume for UI sound effects (0.0 to 1.0)
+  recordingStartSoundEnabled: boolean;
+  clipSavedSoundEnabled: boolean;
   showNewBadgeOnVideos: boolean;
   showGameBackground: boolean; // Show game background while recording
   showAudioWaveformInTimeline: boolean; // Show audio waveform in video timeline
@@ -515,6 +517,8 @@ export const initialSettings: Settings = {
   clipKeepSeparateAudioTracks: false,
   copyCompressSizesMb: [20, 50, 100, 500],
   soundEffectsVolume: 1,
+  recordingStartSoundEnabled: true,
+  clipSavedSoundEnabled: true,
   showNewBadgeOnVideos: false,
   showGameBackground: true,
   showAudioWaveformInTimeline: true,

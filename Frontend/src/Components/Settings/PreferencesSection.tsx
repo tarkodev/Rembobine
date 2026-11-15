@@ -171,6 +171,28 @@ export default function PreferencesSection({ settings, updateSettings }: Prefere
           />
           <Volume2 className="w-4 h-4 opacity-70 shrink-0" />
         </div>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="recordingStartSoundEnabled"
+              checked={settings.recordingStartSoundEnabled}
+              onChange={(e) => updateSettings({ recordingStartSoundEnabled: e.target.checked })}
+              className="toggle toggle-primary toggle-sm shrink-0"
+            />
+            <span className="label-text text-base-content">Recording Start Sound</span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="clipSavedSoundEnabled"
+              checked={settings.clipSavedSoundEnabled}
+              onChange={(e) => updateSettings({ clipSavedSoundEnabled: e.target.checked })}
+              className="toggle toggle-primary toggle-sm shrink-0"
+            />
+            <span className="label-text text-base-content">Clip Saved Sound</span>
+          </label>
+        </div>
       </div>
 
       <div className="p-4 bg-base-300 rounded-lg shadow-md border border-base-400">

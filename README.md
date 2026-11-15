@@ -1,3 +1,25 @@
+# Segrabi
+
+An unofficial fork of [Segra](https://github.com/Segergren/Segra)
+focused on gameplay screenshots and more control over recording and playback.
+
+## Roadmap
+
+- [ ] Add a **📷 Screenshots** sidebar section and a configurable **Take Screenshot** hotkey for in-game captures.
+- [ ] Add **Save Frame as Screenshot** to the paused video player. Save the displayed frame to the same library.
+- [x] Add separate **Recording Start Sound** and **Clip Saved Sound** toggles.
+- [ ] Disable double-click fullscreen in the clip player. Keep the fullscreen button.
+- [ ] Give saved **Replay Buffer** videos and **Full Sessions** separate disk quotas.
+
+The sound toggles are under **Settings → Preferences → App**, below **Sound Effects Volume**.
+**Clip Saved Sound** controls the confirmation when you save a replay.
+
+Build Segrabi from source using the setup instructions in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Upstream Segra
+
+The overview, downloads, and code signing information below describe the original Segra project.
+
 <img height="100" src="https://cdn.segra.tv/icon.png"/>
 
 **Segra** is an open-source game recorder built on Open Broadcaster Software (OBS). It records your games in the background, lets you clip the good parts with a hotkey, and uploads them to [Segra.tv](https://segra.tv).

@@ -239,7 +239,10 @@ namespace Segra.Backend.Recorder
         {
             _ = SendFrontendMessage("ReplayBufferSaveStarted", new { });
             _ = Task.Run(SaveReplayBuffer);
-            _ = Task.Run(() => PlatformServices.Sound.Play(Properties.Resources.bookmark, Settings.Instance.SoundEffectsVolume));
+            if (Settings.Instance.ClipSavedSoundEnabled)
+            {
+                _ = Task.Run(() => PlatformServices.Sound.Play(Properties.Resources.bookmark, Settings.Instance.SoundEffectsVolume));
+            }
         }
 
         public static async Task<bool> SaveReplayBuffer()
@@ -1884,7 +1887,6 @@ namespace Segra.Backend.Recorder
             fileName = _hookedExecutableFileName ?? fileName;
 
             DateTime? startTime = null;
-            bool hasPlayedStartSound = false;
 
             if (_output != null)
             {
@@ -1906,8 +1908,10 @@ namespace Segra.Backend.Recorder
 
                 // Set the exact start time for session recording (Full Session has bookmarks)
                 startTime = DateTime.Now;
-                _ = Task.Run(() => PlaySound("start"));
-                hasPlayedStartSound = true;
+                if (Settings.Instance.RecordingStartSoundEnabled)
+                {
+                    _ = Task.Run(() => PlaySound("start"));
+                }
 
                 Log.Information("Session recording started successfully");
             }
@@ -1931,10 +1935,9 @@ namespace Segra.Backend.Recorder
                     return false;
                 }
 
-                if (!hasPlayedStartSound && !alwaysOn)
+                if (startTime == null && !alwaysOn && Settings.Instance.RecordingStartSoundEnabled)
                 {
                     _ = Task.Run(() => PlaySound("start"));
-                    hasPlayedStartSound = true;
                 }
 
                 Log.Information("Replay buffer started successfully");
