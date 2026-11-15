@@ -210,8 +210,8 @@ namespace Segra.Backend.App
                 // Version-stamped URL: WebKitGTK's disk cache persists across app updates and the
                 // static server sends no cache headers, so a bare /index.html can keep rendering
                 // the previous build's frontend until a manual refresh.
-                string? appVersion = Assembly.GetExecutingAssembly()
-                    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+                // A fork or local rebuild can have the same release version but different embedded assets.
+                string frontendBuildId = Assembly.GetExecutingAssembly().ManifestModule.ModuleVersionId.ToString("N");
 
                 if (IsDebugMode)
                 {
@@ -354,7 +354,7 @@ namespace Segra.Backend.App
                     StartRecording = () =>
                     {
                         Log.Information("Tray: starting display recording");
-                        _ = Task.Run(() => OBSService.StartRecording(startManually: true));
+                        _ = Task.Run(() => OBSService.StartRecording(startManually: true, userInitiated: true));
                     },
                     StopRecording = () =>
                     {
@@ -398,7 +398,7 @@ namespace Segra.Backend.App
                 stateInit.ContinueWith(_ => OBSService.InitializeAsync(), TaskScheduler.Default);
 #endif
 
-                appUrl = IsDebugMode ? "http://localhost:2882" : $"{frontendServer.Result}/index.html?v={Uri.EscapeDataString(appVersion ?? "0")}";
+                appUrl = IsDebugMode ? "http://localhost:2882" : $"{frontendServer.Result}/index.html?v={frontendBuildId}";
                 Log.Information("Serving React app at {AppUrl}", appUrl);
 
                 // The message loop outlives every window, so closing to tray can destroy the
@@ -880,7 +880,7 @@ namespace Segra.Backend.App
                 })
                 .Load(appUrl!);
 
-            Window.SetTitle("Segra");
+            Window.SetTitle("Segrabi");
 
             // Track the last normal (not maximized/minimized) bounds so SaveWindowState can persist
             // a sensible restore size even when the window is closed while maximized. The move/size

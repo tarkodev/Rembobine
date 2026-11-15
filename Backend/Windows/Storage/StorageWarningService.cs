@@ -156,6 +156,9 @@ namespace Segra.Backend.Windows.Storage
                 if (Settings.Instance.UnlimitedStorage)
                     return true;
 
+                if (contentType == Content.ContentType.Buffer && Settings.Instance.ExcludeReplayBufferFromStorageLimit)
+                    return true;
+
                 if (Settings.Instance.ExcludeClipsFromStorageLimit && contentType is Content.ContentType.Clip or Content.ContentType.Highlight)
                     return true;
 

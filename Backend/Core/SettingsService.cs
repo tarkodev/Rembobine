@@ -382,17 +382,10 @@ namespace Segra.Backend.Core
                 hasChanges = true;
             }
 
-            if (settings.RecordingStartSoundEnabled != updatedSettings.RecordingStartSoundEnabled)
+            if (settings.RecordingStartSoundMode != updatedSettings.RecordingStartSoundMode)
             {
-                Log.Information($"RecordingStartSoundEnabled changed from '{settings.RecordingStartSoundEnabled}' to '{updatedSettings.RecordingStartSoundEnabled}'");
-                settings.RecordingStartSoundEnabled = updatedSettings.RecordingStartSoundEnabled;
-                hasChanges = true;
-            }
-
-            if (settings.ClipSavedSoundEnabled != updatedSettings.ClipSavedSoundEnabled)
-            {
-                Log.Information($"ClipSavedSoundEnabled changed from '{settings.ClipSavedSoundEnabled}' to '{updatedSettings.ClipSavedSoundEnabled}'");
-                settings.ClipSavedSoundEnabled = updatedSettings.ClipSavedSoundEnabled;
+                Log.Information($"RecordingStartSoundMode changed from '{settings.RecordingStartSoundMode}' to '{updatedSettings.RecordingStartSoundMode}'");
+                settings.RecordingStartSoundMode = updatedSettings.RecordingStartSoundMode;
                 hasChanges = true;
             }
 
@@ -874,6 +867,13 @@ namespace Segra.Backend.Core
             {
                 Log.Information($"UnlimitedStorage changed from '{settings.UnlimitedStorage}' to '{updatedSettings.UnlimitedStorage}'");
                 settings.UnlimitedStorage = updatedSettings.UnlimitedStorage;
+                hasChanges = true;
+            }
+
+            if (settings.ExcludeReplayBufferFromStorageLimit != updatedSettings.ExcludeReplayBufferFromStorageLimit)
+            {
+                Log.Information($"ExcludeReplayBufferFromStorageLimit changed from '{settings.ExcludeReplayBufferFromStorageLimit}' to '{updatedSettings.ExcludeReplayBufferFromStorageLimit}'");
+                settings.ExcludeReplayBufferFromStorageLimit = updatedSettings.ExcludeReplayBufferFromStorageLimit;
                 hasChanges = true;
             }
 

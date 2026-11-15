@@ -9,7 +9,7 @@ import {
   Content,
 } from '../Models/types';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
-import { Ellipsis, Ban } from 'lucide-react';
+import { Ellipsis, Ban, Eye, EyeOff } from 'lucide-react';
 import { Gamepad2, Monitor, AppWindow } from 'lucide';
 import { MorphIcon } from 'morphicons/react';
 import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
@@ -35,13 +35,14 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const lastFetchedGameRef = useRef<string | null>(null);
   const [showShockwave, setShowShockwave] = useState(false);
-  const [previewEnabled, setPreviewEnabled] = useState(false);
   const [hasPreviewFrame, setHasPreviewFrame] = useState(false);
   const { setSelectedVideo } = useSelectedVideo();
 
   const gameName = preRecording ? preRecording.game : recording?.game;
   const gameListEntry = state.gameList.find((g) => g.name === gameName);
   const canBlockGame = !!gameListEntry && gameListEntry.executables.length > 0;
+  const canTogglePreview = !!recording && !preRecording && recording.endTime == null;
+  const previewEnabled = canTogglePreview && state.recordingPreviewEnabled;
 
   // Monitor dropdown next to the Display capture indicator: manual recordings only, when several
   // monitors share the display's aspect ratio (game recordings follow the game's monitor).
@@ -115,7 +116,7 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
     sendMessageToBackend('StopRecording');
   }, [gameListEntry, settings.games, updateSettings]);
 
-  // Listen for bookmark created, preview state, and preview-frame events
+  // Listen for bookmarks, recording snapshots, and preview frames.
   useEffect(() => {
     const handleMessage = (event: CustomEvent) => {
       const method = event.detail?.method;
@@ -124,17 +125,6 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
       } else if (method === 'BookmarkCreated' || method === 'ReplayBufferSaveStarted') {
         setShowShockwave(true);
         setTimeout(() => setShowShockwave(false), 600);
-      } else if (method === 'RecordingPreviewState') {
-        const enabled = !!event.detail?.content?.enabled;
-        setPreviewEnabled((prev) => {
-          // On re-enable, hide the stale frame via opacity so the new one fades in.
-          // (We don't clear src — a blank src would render the broken-image icon.)
-          // On disable, keep hasPreviewFrame so the last frame stays visible through the exit animation.
-          if (enabled && !prev) {
-            setHasPreviewFrame(false);
-          }
-          return enabled;
-        });
       } else if (method === 'RecordingPreviewFrame') {
         const img = previewImgRef.current;
         const b64 = event.detail?.content?.jpegBase64;
@@ -151,12 +141,10 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
     };
   }, [setSelectedVideo]);
 
-  // Reset preview-enabled when recording stops; let the exit animation play with the last frame still visible.
+  // Hide stale frames on enable, but keep the last frame visible through the exit animation.
   useEffect(() => {
-    if (!recording) {
-      setPreviewEnabled(false);
-    }
-  }, [recording]);
+    if (previewEnabled) setHasPreviewFrame(false);
+  }, [previewEnabled]);
 
   useEffect(() => {
     if (preRecording) {
@@ -320,31 +308,48 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
               )}
             </AnimatePresence>
           </div>
-          {canBlockGame && (
-            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity delay-200">
+          {(canBlockGame || canTogglePreview) && (
+            <div className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity delay-200">
               <div className="dropdown dropdown-top" onClick={(e) => e.stopPropagation()}>
-                <label
-                  tabIndex={0}
+                <button
+                  type="button"
+                  aria-label="Recording options"
                   className="cursor-pointer rounded-full p-0.5 hover:bg-white/10 active:bg-white/10 flex items-center justify-center"
                 >
                   <Ellipsis className="h-5 w-5 text-gray-300" />
-                </label>
+                </button>
                 <ul
                   tabIndex={0}
-                  className="dropdown-content menu bg-base-300 border border-base-400 rounded-box z-[9999] w-52 p-2"
+                  className="dropdown-content menu bg-base-300 border border-base-400 rounded-box z-[9999] w-max min-w-52 p-2"
                 >
-                  <li>
-                    <Button
-                      variant="menuDanger"
-                      onClick={() => {
-                        (document.activeElement as HTMLElement).blur();
-                        handleAddToBlocklist();
-                      }}
-                    >
-                      <Ban size={20} />
-                      <span>Add to Block List</span>
-                    </Button>
-                  </li>
+                  {canTogglePreview && (
+                    <li>
+                      <Button
+                        variant="menu"
+                        onClick={() => {
+                          (document.activeElement as HTMLElement).blur();
+                          sendMessageToBackend('ToggleRecordingPreview');
+                        }}
+                      >
+                        {previewEnabled ? <EyeOff size={20} /> : <Eye size={20} />}
+                        <span>{previewEnabled ? 'Disable' : 'Enable'} Recording Preview</span>
+                      </Button>
+                    </li>
+                  )}
+                  {canBlockGame && (
+                    <li>
+                      <Button
+                        variant="menuDanger"
+                        onClick={() => {
+                          (document.activeElement as HTMLElement).blur();
+                          handleAddToBlocklist();
+                        }}
+                      >
+                        <Ban size={20} />
+                        <span>Add to Block List</span>
+                      </Button>
+                    </li>
+                  )}
                 </ul>
               </div>
             </div>
@@ -361,9 +366,9 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
           </div>
         </div>
 
-        {/* Live preview (toggled by hotkey while actively recording) */}
+        {/* Live recording preview */}
         <AnimatePresence initial={false}>
-          {recording && previewEnabled && (
+          {previewEnabled && (
             <motion.div
               initial={{ opacity: 0, height: 0, marginTop: 0 }}
               animate={{

@@ -388,7 +388,7 @@ namespace Segra.Backend.Windows.Input
                         {
                             if (GameDetectionService.TryStartForegroundGameRecording()) return;
                             Log.Information("Hotkey: starting display recording");
-                            OBSService.StartRecording(startManually: true);
+                            OBSService.StartRecording(startManually: true, userInitiated: true);
                         });
                     }
                     break;

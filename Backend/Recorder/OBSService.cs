@@ -239,10 +239,7 @@ namespace Segra.Backend.Recorder
         {
             _ = SendFrontendMessage("ReplayBufferSaveStarted", new { });
             _ = Task.Run(SaveReplayBuffer);
-            if (Settings.Instance.ClipSavedSoundEnabled)
-            {
-                _ = Task.Run(() => PlatformServices.Sound.Play(Properties.Resources.bookmark, Settings.Instance.SoundEffectsVolume));
-            }
+            _ = Task.Run(() => PlatformServices.Sound.Play(Properties.Resources.bookmark, Settings.Instance.SoundEffectsVolume));
         }
 
         public static async Task<bool> SaveReplayBuffer()
@@ -1141,7 +1138,10 @@ namespace Segra.Backend.Recorder
         private static EffectiveRecordingSettings? _activeEffectiveSettings;
         public static EffectiveRecordingSettings? ActiveEffectiveSettings => _activeEffectiveSettings;
 
-        public static bool StartRecording(string name = "Manual Recording", string exePath = "Unknown", bool startManually = false, int? pid = null)
+        // A user can start a game recording without selecting the display capture path (startManually).
+        public static bool StartRecording(
+            string name = "Manual Recording", string exePath = "Unknown", bool startManually = false,
+            int? pid = null, bool userInitiated = false)
         {
             // Read before waiting for the lock, so a user stop while this start is queued cancels it too
             CancellationToken cancel = Volatile.Read(ref _userStop).Token;
@@ -1151,7 +1151,7 @@ namespace Segra.Backend.Recorder
             try
             {
                 StopAlwaysOnBufferCore();
-                started = StartRecordingCore(name, exePath, startManually, pid, cancel);
+                started = StartRecordingCore(name, exePath, startManually, pid, cancel, userInitiated);
                 return started;
             }
             catch (Exception ex)
@@ -1192,7 +1192,9 @@ namespace Segra.Backend.Recorder
             }
         }
 
-        private static bool StartRecordingCore(string name, string exePath, bool startManually, int? pid, CancellationToken cancel, bool alwaysOn = false)
+        private static bool StartRecordingCore(
+            string name, string exePath, bool startManually, int? pid, CancellationToken cancel,
+            bool userInitiated, bool alwaysOn = false)
         {
 #if !WINDOWS
             _portalFailed = false;
@@ -1894,7 +1896,7 @@ namespace Segra.Backend.Recorder
                 {
                     string error = _output.LastError ?? "Unknown error";
                     Log.Error($"Failed to start recording: {error}");
-                    if (RetryWithoutHdr(() => StartRecordingCore(name, exePath, startManually, pid, cancel, alwaysOn)) is bool startedInSdr)
+                    if (RetryWithoutHdr(() => StartRecordingCore(name, exePath, startManually, pid, cancel, userInitiated, alwaysOn)) is bool startedInSdr)
                         return startedInSdr;
 
                     // Stop the game detection polling loop from retrying until the user switches foreground window
@@ -1908,10 +1910,7 @@ namespace Segra.Backend.Recorder
 
                 // Set the exact start time for session recording (Full Session has bookmarks)
                 startTime = DateTime.Now;
-                if (Settings.Instance.RecordingStartSoundEnabled)
-                {
-                    _ = Task.Run(() => PlaySound("start"));
-                }
+                PlayRecordingStartSound(userInitiated, alwaysOn);
 
                 Log.Information("Session recording started successfully");
             }
@@ -1922,7 +1921,7 @@ namespace Segra.Backend.Recorder
                 {
                     string error = _bufferOutput.LastError ?? "Unknown error";
                     Log.Error($"Failed to start replay buffer: {error}");
-                    if (_output == null && RetryWithoutHdr(() => StartRecordingCore(name, exePath, startManually, pid, cancel, alwaysOn)) is bool bufferStartedInSdr)
+                    if (_output == null && RetryWithoutHdr(() => StartRecordingCore(name, exePath, startManually, pid, cancel, userInitiated, alwaysOn)) is bool bufferStartedInSdr)
                         return bufferStartedInSdr;
                     if (alwaysOn)
                         return false;
@@ -1935,10 +1934,8 @@ namespace Segra.Backend.Recorder
                     return false;
                 }
 
-                if (startTime == null && !alwaysOn && Settings.Instance.RecordingStartSoundEnabled)
-                {
-                    _ = Task.Run(() => PlaySound("start"));
-                }
+                if (startTime == null)
+                    PlayRecordingStartSound(userInitiated, alwaysOn);
 
                 Log.Information("Replay buffer started successfully");
             }
@@ -2624,7 +2621,7 @@ namespace Segra.Backend.Recorder
                     _alwaysOnBufferKey = key;
                     try
                     {
-                        if (StartRecordingCore("Manual Recording", "Unknown", startManually: true, pid: null, cancel: CancellationToken.None, alwaysOn: true))
+                        if (StartRecordingCore("Manual Recording", "Unknown", startManually: true, pid: null, cancel: CancellationToken.None, userInitiated: false, alwaysOn: true))
                             return;
                     }
                     catch (Exception ex)
@@ -4517,6 +4514,16 @@ namespace Segra.Backend.Recorder
             public required string Sha { get; set; }
             [System.Text.Json.Serialization.JsonPropertyName("download_url")]
             public required string DownloadUrl { get; set; }
+        }
+
+        private static void PlayRecordingStartSound(bool userInitiated, bool alwaysOn)
+        {
+            var mode = Settings.Instance.RecordingStartSoundMode;
+            if (!alwaysOn && (mode == RecordingStartSoundMode.ManualAndAutomatic
+                || (mode == RecordingStartSoundMode.ManualOnly && userInitiated)))
+            {
+                _ = Task.Run(() => PlaySound("start"));
+            }
         }
 
         public static void PlaySound(string resourceName, int delay = 0)

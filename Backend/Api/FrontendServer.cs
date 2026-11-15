@@ -108,6 +108,12 @@ namespace Segra.Backend.Api
                     return;
                 }
 
+                // HTML selects the hashed assets for the current build, so always revalidate it.
+                if (contentType == "text/html")
+                {
+                    response.Headers[HttpResponseHeader.CacheControl] = "no-cache";
+                }
+
                 // Lets the webview revalidate its cached copy with a 304 instead of downloading it again
                 string etag = $"\"{file.LastModified.UtcTicks:x}-{file.Length:x}\"";
                 response.Headers[HttpResponseHeader.ETag] = etag;

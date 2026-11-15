@@ -7,12 +7,20 @@ focused on gameplay screenshots and more control over recording and playback.
 
 - [ ] Add a **📷 Screenshots** sidebar section and a configurable **Take Screenshot** hotkey for in-game captures.
 - [ ] Add **Save Frame as Screenshot** to the paused video player. Save the displayed frame to the same library.
-- [x] Add separate **Recording Start Sound** and **Clip Saved Sound** toggles.
+- [x] Add **Recording Start Sound** under **Settings → Preferences → App**, below **Sound Effects Volume**.
+  **Off** mutes the start beep. **Manual Only** (default) plays it when you start a recording yourself.
+  **Manual & Automatic** also plays it when Segrabi starts a recording automatically. Saving a replay
+  plays its own confirmation at the configured **Sound Effects Volume**.
+- [x] Add **Enable Recording Preview** and **Disable Recording Preview** to the **⋯** menu on the active
+  recording card. The menu shows the action for the current preview state.
 - [ ] Disable double-click fullscreen in the clip player. Keep the fullscreen button.
-- [ ] Give saved **Replay Buffer** videos and **Full Sessions** separate disk quotas.
+- [x] Add **Exclude Replay Buffer From Storage Limit** under **Settings → Storage**, above
+  **Exclude Clips and Highlights From Storage Limit**. It is on by default. While on, saved replays
+  are excluded from the storage quota and the cleanup it triggers. With a quota set, **Storage Usage** shows their size
+  as **not counted**.
 
-The sound toggles are under **Settings → Preferences → App**, below **Sound Effects Volume**.
-**Clip Saved Sound** controls the confirmation when you save a replay.
+  > Replay Buffers are kept when freeing up space. When on, their size is excluded from the limit.
+- [ ] Give saved **Replay Buffer** videos and **Full Sessions** separate disk quotas.
 
 Build Segrabi from source using the setup instructions in [CONTRIBUTING.md](CONTRIBUTING.md).
 

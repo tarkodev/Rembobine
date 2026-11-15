@@ -1,44 +1,30 @@
-import { useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { Content, ContentType, State } from '../../Models/types';
+import { ContentFolderUsage, Settings, State } from '../../Models/types';
 
-const TYPE_COLORS: Record<ContentType, string> = {
-  Session: '#3987e5',
-  Buffer: '#d95926',
-  Clip: '#199e70',
-  Highlight: '#c98500',
-};
+const BYTES_PER_GB = 1024 ** 3;
 
-const OTHER_COLOR = '#49515b';
+const SEGMENTS = [
+  { key: 'sessionsBytes', label: 'Sessions', color: '#3987e5' },
+  { key: 'replayBuffersBytes', label: 'Buffers', color: '#d95926' },
+  { key: 'clipsBytes', label: 'Clips', color: '#199e70' },
+  { key: 'highlightsBytes', label: 'Highlights', color: '#c98500' },
+  { key: 'otherBytes', label: 'Other', color: '#49515b' },
+] as const;
 
-const TYPE_LABELS: Record<ContentType, string> = {
-  Session: 'Sessions',
-  Buffer: 'Buffers',
-  Clip: 'Clips',
-  Highlight: 'Highlights',
-};
+export type StorageExclusions = Pick<
+  Settings,
+  'excludeReplayBufferFromStorageLimit' | 'excludeClipsFromStorageLimit'
+>;
 
-const TYPE_ORDER: ContentType[] = ['Session', 'Buffer', 'Clip', 'Highlight'];
+const isExcluded = (key: keyof ContentFolderUsage, exclusions: StorageExclusions) =>
+  (exclusions.excludeReplayBufferFromStorageLimit && key === 'replayBuffersBytes') ||
+  (exclusions.excludeClipsFromStorageLimit && (key === 'clipsBytes' || key === 'highlightsBytes'));
 
-const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
-
-// Imported content can live outside the recording path and isn't counted against the limit
-export const sumExcludedGb = (content: Content[], contentFolder: string) => {
-  const root = normalizePath(contentFolder.trim()).toLowerCase();
-  if (!root) return 0;
-  return (
-    content
-      .filter(
-        (c) =>
-          (c.type === 'Clip' || c.type === 'Highlight') &&
-          normalizePath(c.filePath || '')
-            .toLowerCase()
-            .startsWith(root + '/'),
-      )
-      .reduce((sum, c) => sum + (c.fileSizeKb || 0), 0) /
-    (1024 * 1024)
-  );
-};
+export const getCountedStorageGb = (usage: ContentFolderUsage, exclusions?: StorageExclusions) =>
+  SEGMENTS.reduce(
+    (total, { key }) => total + (exclusions && isExcluded(key, exclusions) ? 0 : usage[key]),
+    0,
+  ) / BYTES_PER_GB;
 
 const formatGb = (value: number) => {
   if (value >= 100) return value.toFixed(0);
@@ -52,69 +38,33 @@ const driveLabel = (contentFolder: string) => {
   return match ? `Drive ${match[1].toUpperCase()}:` : 'Disk';
 };
 
-interface Segment {
-  key: string;
-  label: string;
-  color: string;
-  gb: number;
-}
-
 interface StorageUsageMeterProps {
-  content: Content[];
+  usage: ContentFolderUsage;
   contentFolder: string;
   storageLimitGb: number;
   unlimited: boolean;
-  excludeClips: boolean;
-  usedGb: number;
+  exclusions: StorageExclusions;
   driveUsedGb: State['recordingDriveUsedGb'];
   driveFreeGb: State['recordingDriveFreeGb'];
 }
 
 export default function StorageUsageMeter({
-  content,
+  usage,
   contentFolder,
   storageLimitGb,
   unlimited,
-  excludeClips,
-  usedGb,
+  exclusions,
   driveUsedGb,
   driveFreeGb,
 }: StorageUsageMeterProps) {
-  const segments = useMemo<Segment[]>(() => {
-    // Imported content can live outside the recording path and isn't counted against
-    // the limit, so the breakdown has to match what the limit actually measures.
-    const root = normalizePath(contentFolder.trim()).toLowerCase();
-    const inside = root
-      ? content.filter((c) =>
-          normalizePath(c.filePath || '')
-            .toLowerCase()
-            .startsWith(root + '/'),
-        )
-      : [];
-
-    const byType = TYPE_ORDER.map((type) => ({
-      key: type,
-      label: TYPE_LABELS[type],
-      color: TYPE_COLORS[type],
-      gb:
-        inside.filter((c) => c.type === type).reduce((sum, c) => sum + (c.fileSizeKb || 0), 0) /
-        (1024 * 1024),
-    }));
-
-    // Whatever the folder holds beyond tracked content: orphaned files, stray videos.
-    const tracked = byType.reduce((sum, s) => sum + s.gb, 0);
-    const other = Math.max(0, usedGb - tracked);
-
-    return [...byType, { key: 'Other', label: 'Other', color: OTHER_COLOR, gb: other }].filter(
-      (s) => s.gb >= 0.01,
-    );
-  }, [content, contentFolder, usedGb]);
-
-  // Clips and highlights stay in the legend but only count toward the limit when not excluded
-  const isExcluded = (key: string) => excludeClips && (key === 'Clip' || key === 'Highlight');
-  const excludedGb = segments.filter((s) => isExcluded(s.key)).reduce((sum, s) => sum + s.gb, 0);
-  const countedGb = usedGb - excludedGb;
-  const barSegments = segments.filter((s) => !isExcluded(s.key));
+  const segments = SEGMENTS.map((segment) => ({
+    ...segment,
+    gb: usage[segment.key] / BYTES_PER_GB,
+    excluded: !unlimited && isExcluded(segment.key, exclusions),
+  })).filter((s) => s.gb >= 0.01);
+  const usedGb = getCountedStorageGb(usage);
+  const countedGb = unlimited ? usedGb : getCountedStorageGb(usage, exclusions);
+  const barSegments = segments.filter((s) => !s.excluded);
 
   const isOverLimit = !unlimited && storageLimitGb > 0 && countedGb > storageLimitGb;
   const usedPercent = storageLimitGb > 0 ? (countedGb / storageLimitGb) * 100 : 0;
@@ -188,7 +138,7 @@ export default function StorageUsageMeter({
               />
               <span className="text-base-content/80">{s.label}</span>
               <span className="tabular-nums text-base-content/50">
-                {formatGb(s.gb)} GB{isExcluded(s.key) ? ' (not counted)' : ''}
+                {formatGb(s.gb)} GB{s.excluded ? ' (not counted)' : ''}
               </span>
             </span>
           ))}

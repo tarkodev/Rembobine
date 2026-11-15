@@ -296,10 +296,13 @@ namespace Segra.Backend.App
                                 return;
                             }
 
-                            _ = Task.Run(() => OBSService.StartRecording(startManually: true));
+                            _ = Task.Run(() => OBSService.StartRecording(startManually: true, userInitiated: true));
                             break;
                         case "StopRecording":
                             _ = Task.Run(() => OBSService.StopRecording(userRequested: true));
+                            break;
+                        case "ToggleRecordingPreview":
+                            RecordingPreviewService.Toggle();
                             break;
                         case "RefreshWebcams":
                             _ = Task.Run(AppState.Instance.UpdateWebcams);
@@ -319,6 +322,7 @@ namespace Segra.Backend.App
 
                             await SendSettingsToFrontend("New connection");
                             await SendStateToFrontend("New connection");
+                            await RecordingPreviewService.SendStateToFrontend();
 
                             // Empty until games.json has loaded, which sends the list itself
                             if (GameUtils.GetGameList().Count > 0)

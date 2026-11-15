@@ -34,19 +34,6 @@ namespace Segra.Backend.Windows.Storage
                 ? PathUtils.Combine(typeFolder, SanitizeGameNameForFolder(gameName ?? "Unknown"))
                 : typeFolder;
 
-        public static double GetCurrentFolderSizeGb()
-        {
-            string contentFolder = Settings.Instance.ContentFolder;
-            if (string.IsNullOrEmpty(contentFolder) || !Directory.Exists(contentFolder))
-            {
-                return 0;
-            }
-
-            long currentUsageBytes = CalculateFolderSize(contentFolder);
-            double currentUsageGb = Math.Round((double)currentUsageBytes / BYTES_PER_GB, 2);
-            return currentUsageGb;
-        }
-
         // A drive considered too full to safely start a recording
         public sealed record FullDrive(string Label, string Root, double FreeGb);
 
@@ -153,10 +140,10 @@ namespace Segra.Backend.Windows.Storage
 
         public static void UpdateFolderSizeInState(bool sendToFrontend = true)
         {
-            double currentSizeGb = GetCurrentFolderSizeGb();
-            AppState.Instance.SetCurrentFolderSizeGb(currentSizeGb, sendToFrontend);
+            ContentFolderUsage usage = ReadContentFolderUsage(Settings.Instance.ContentFolder);
+            AppState.Instance.SetContentFolderUsage(usage, sendToFrontend);
             UpdateRecordingDriveSpaceInState(sendToFrontend);
-            Log.Information($"Updated folder size in state: {currentSizeGb:F2} GB");
+            Log.Information($"Updated folder size in state: {(double)usage.TotalBytes / BYTES_PER_GB:F2} GB");
         }
 
         public static void UpdateRecordingDriveSpaceInState(bool sendToFrontend = true)
@@ -182,12 +169,15 @@ namespace Segra.Backend.Windows.Storage
 
         public static async Task EnsureStorageBelowLimit()
         {
-            if (Settings.Instance.UnlimitedStorage)
+            var settings = Settings.Instance;
+            if (settings.UnlimitedStorage)
                 return;
 
             Log.Information("Starting storage limit check");
-            long storageLimit = Settings.Instance.StorageLimit; // This is in GB
-            string contentFolder = Settings.Instance.ContentFolder;
+            long storageLimit = settings.StorageLimit; // This is in GB
+            string contentFolder = settings.ContentFolder;
+            bool excludeReplayBuffers = settings.ExcludeReplayBufferFromStorageLimit;
+            bool excludeClips = settings.ExcludeClipsFromStorageLimit;
 
             if (string.IsNullOrEmpty(contentFolder) || !Directory.Exists(contentFolder))
             {
@@ -195,7 +185,7 @@ namespace Segra.Backend.Windows.Storage
                 return;
             }
 
-            long currentUsageBytes = CalculateLimitedSize(contentFolder);
+            long currentUsageBytes = ReadContentFolderUsage(contentFolder).CountedBytes(excludeReplayBuffers, excludeClips);
             double currentUsageGB = (double)currentUsageBytes / BYTES_PER_GB;
 
             Log.Information($"Current storage usage: {currentUsageGB:F2} GB, limit: {storageLimit} GB");
@@ -204,7 +194,16 @@ namespace Segra.Backend.Windows.Storage
             {
                 double excessGB = (currentUsageBytes - (storageLimit * BYTES_PER_GB)) / (double)BYTES_PER_GB;
                 Log.Information($"Storage limit exceeded by {excessGB:F2} GB, starting cleanup");
-                await DeleteOldestContent(contentFolder, currentUsageBytes - (storageLimit * BYTES_PER_GB));
+                var candidates = GetDeletionCandidates(contentFolder, includeReplayBuffers: !excludeReplayBuffers);
+                await DeleteOldestContent(
+                    candidates,
+                    currentUsageBytes - (storageLimit * BYTES_PER_GB),
+                    // Stop this pass if its quota settings change while files are being deleted.
+                    canContinue: () => !settings.UnlimitedStorage
+                        && settings.ContentFolder == contentFolder
+                        && settings.StorageLimit == storageLimit
+                        && settings.ExcludeReplayBufferFromStorageLimit == excludeReplayBuffers
+                        && settings.ExcludeClipsFromStorageLimit == excludeClips);
             }
             else
             {
@@ -266,30 +265,43 @@ namespace Segra.Backend.Windows.Storage
         // The size the storage limit is measured against
         internal static long CalculateLimitedSize(string contentFolder)
         {
-            long size = CalculateFolderSize(contentFolder);
-            if (Settings.Instance.ExcludeClipsFromStorageLimit)
-            {
-                foreach (string name in new[] { FolderNames.Clips, FolderNames.Highlights })
-                {
-                    string folder = Path.Combine(contentFolder, name);
-                    if (Directory.Exists(folder))
-                        size -= CalculateFolderSize(folder);
-                }
-            }
-            return size;
+            var settings = Settings.Instance;
+            return ReadContentFolderUsage(contentFolder).CountedBytes(
+                settings.ExcludeReplayBufferFromStorageLimit, settings.ExcludeClipsFromStorageLimit);
         }
 
-        internal static long CalculateFolderSize(string folderPath)
+        private static ContentFolderUsage ReadContentFolderUsage(string contentFolder)
         {
-            long size = 0;
-            string[] files = Directory.GetFiles(folderPath, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 });
+            if (string.IsNullOrEmpty(contentFolder) || !Directory.Exists(contentFolder))
+                return new(0, 0, 0, 0, 0);
 
-            foreach (string file in files)
+            long sessionsBytes = 0;
+            long replayBuffersBytes = 0;
+            long clipsBytes = 0;
+            long highlightsBytes = 0;
+            long otherBytes = 0;
+
+            var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 };
+            foreach (string file in Directory.EnumerateFiles(contentFolder, "*", options))
             {
-                FileInfo fileInfo = new FileInfo(file);
                 try
                 {
-                    size += fileInfo.Length;
+                    long bytes = new FileInfo(file).Length;
+                    string relativePath = Path.GetRelativePath(contentFolder, file);
+                    int separator = relativePath.IndexOf(Path.DirectorySeparatorChar);
+                    ReadOnlySpan<char> folder = separator < 0 ? default : relativePath.AsSpan(0, separator);
+
+                    if (folder.Equals(FolderNames.Sessions, pathComparison))
+                        sessionsBytes += bytes;
+                    else if (folder.Equals(FolderNames.Buffers, pathComparison))
+                        replayBuffersBytes += bytes;
+                    else if (folder.Equals(FolderNames.Clips, pathComparison))
+                        clipsBytes += bytes;
+                    else if (folder.Equals(FolderNames.Highlights, pathComparison))
+                        highlightsBytes += bytes;
+                    else
+                        otherBytes += bytes;
                 }
                 catch (Exception ex)
                 {
@@ -297,7 +309,7 @@ namespace Segra.Backend.Windows.Storage
                 }
             }
 
-            return size;
+            return new(sessionsBytes, replayBuffersBytes, clipsBytes, highlightsBytes, otherBytes);
         }
 
         /// <summary>
@@ -314,7 +326,8 @@ namespace Segra.Backend.Windows.Storage
             if (freeBytes == null || string.IsNullOrEmpty(contentFolder) || !Directory.Exists(contentFolder))
                 return false;
 
-            long deletableBytes = GetDeletionCandidates(contentFolder, activeFilePath).Sum(f => f.Length);
+            var candidates = GetDeletionCandidates(contentFolder, excludeFilePath: activeFilePath);
+            long deletableBytes = candidates.Sum(f => f.Length);
             if (freeBytes.Value + deletableBytes < thresholdBytes)
             {
                 Log.Information("Not enough old recordings to free space for the current recording");
@@ -322,18 +335,19 @@ namespace Segra.Backend.Windows.Storage
             }
 
             Log.Information($"Drive low on space ({freeBytes.Value / (1024 * 1024)} MB free), deleting old recordings to keep recording");
-            long freed = await DeleteOldestContent(contentFolder, targetFreeBytes - freeBytes.Value, activeFilePath);
+            long freed = await DeleteOldestContent(candidates, targetFreeBytes - freeBytes.Value);
             return freed > 0 && GetContentDriveFreeBytes() >= thresholdBytes;
         }
 
         // Do not delete files newer than 1 hour since they are likely still in use
-        private static List<FileInfo> GetDeletionCandidates(string contentFolder, string? excludeFilePath)
+        private static List<FileInfo> GetDeletionCandidates(string contentFolder, string? excludeFilePath = null, bool includeReplayBuffers = true)
         {
             DateTime oneHourAgo = DateTime.Now.AddHours(-1);
             string? excluded = excludeFilePath == null ? null : PathUtils.Normalize(excludeFilePath);
             List<FileInfo> deletionCandidates = new List<FileInfo>();
+            string[] folders = includeReplayBuffers ? [FolderNames.Sessions, FolderNames.Buffers] : [FolderNames.Sessions];
 
-            foreach (string folderName in new[] { FolderNames.Sessions, FolderNames.Buffers })
+            foreach (string folderName in folders)
             {
                 string folder = Path.Combine(contentFolder, folderName);
                 if (!Directory.Exists(folder))
@@ -349,10 +363,8 @@ namespace Segra.Backend.Windows.Storage
             return deletionCandidates.OrderBy(f => f.CreationTime).ToList();
         }
 
-        private static async Task<long> DeleteOldestContent(string contentFolder, long spaceToFreeBytes, string? excludeFilePath = null)
+        private static async Task<long> DeleteOldestContent(List<FileInfo> deletionCandidates, long spaceToFreeBytes, Func<bool>? canContinue = null)
         {
-            double spaceToFreeGB = (double)spaceToFreeBytes / BYTES_PER_GB;
-            List<FileInfo> deletionCandidates = GetDeletionCandidates(contentFolder, excludeFilePath);
             Log.Information($"Total files eligible for deletion: {deletionCandidates.Count}, ordered by creation time");
 
             long freedSpaceBytes = 0;
@@ -360,7 +372,7 @@ namespace Segra.Backend.Windows.Storage
 
             foreach (FileInfo file in deletionCandidates)
             {
-                if (freedSpaceBytes >= spaceToFreeBytes)
+                if (freedSpaceBytes >= spaceToFreeBytes || canContinue?.Invoke() == false)
                     break;
 
                 string fileFullName = PathUtils.Normalize(file.FullName);

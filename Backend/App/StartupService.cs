@@ -5,6 +5,8 @@ namespace Segra.Backend.App
 {
     internal static class StartupService
     {
+        private const string StartupShortcutName = "Segrabi.lnk";
+
         public static void SetStartupStatus(bool enable)
         {
             try
@@ -16,7 +18,7 @@ namespace Segra.Backend.App
                     return;
                 }
                 string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string linkPath = Path.Combine(startupFolder, "Segra.lnk");
+                string linkPath = Path.Combine(startupFolder, StartupShortcutName);
                 if (enable && !File.Exists(linkPath))
                 {
                     Type shellType = Type.GetTypeFromProgID("WScript.Shell")!;
@@ -50,7 +52,7 @@ namespace Segra.Backend.App
         {
             try
             {
-                string linkPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Segra.lnk");
+                string linkPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), StartupShortcutName);
                 return File.Exists(linkPath);
             }
             catch (Exception ex)

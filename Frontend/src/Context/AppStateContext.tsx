@@ -32,6 +32,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       // Do not restore live recording info from cache
       revived.recording = undefined;
       revived.preRecording = undefined;
+      revived.recordingPreviewEnabled = false;
       revived.alwaysOnBufferActive = false;
       revived.isFinishingRecording = false;
       revived.hasLoadedObs = false;
@@ -80,6 +81,11 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
           saveCachedState(next);
           return next;
         });
+      } else if (data.method === 'RecordingPreviewState') {
+        setAppState((prev) => ({
+          ...prev,
+          recordingPreviewEnabled: data.content?.enabled === true,
+        }));
       }
     };
 

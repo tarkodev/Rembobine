@@ -501,7 +501,7 @@ namespace Segra.Backend.Games
         }
 #endif
 
-        private static void StartGameRecording(int pid, string exePath)
+        private static void StartGameRecording(int pid, string exePath, bool userInitiated = false)
         {
             if (AppState.Instance.Recording != null || AppState.Instance.PreRecording != null)
             {
@@ -522,10 +522,10 @@ namespace Segra.Backend.Games
 
             AppState.Instance.PreRecording = new PreRecording { Game = gameName, Status = "Waiting to start", CoverImageId = coverImageId, Pid = pid, Exe = exePath };
 #if WINDOWS
-            _ = Task.Run(() => OBSService.StartRecording(gameName, exePath, pid: pid));
+            _ = Task.Run(() => OBSService.StartRecording(gameName, exePath, pid: pid, userInitiated: userInitiated));
 #else
             PreventRetryRecording = false;
-            if (!OBSService.StartRecording(gameName, exePath, pid: pid) && PreventRetryRecording)
+            if (!OBSService.StartRecording(gameName, exePath, pid: pid, userInitiated: userInitiated) && PreventRetryRecording)
                 _failedSteamInstallPath = steamInstallPath;
 #endif
         }
@@ -545,7 +545,7 @@ namespace Segra.Backend.Games
                 if (GameSettingsService.FindForExePath(exePath) == null && !IsDetectedGame(exePath)) return false;
 
                 Log.Information($"[ManualStart] Focused window is a game: PID {pid}, Path: {exePath}");
-                StartGameRecording((int)pid, exePath);
+                StartGameRecording((int)pid, exePath, userInitiated: true);
                 return true;
             }
             catch (Exception ex)

@@ -10,7 +10,7 @@ import Button from '../Button';
 import MigrationFlow from '../MigrationFlow';
 import { useAppState } from '../../Context/AppStateContext';
 import { useContentMigration } from '../../Context/ContentMigrationContext';
-import StorageUsageMeter, { sumExcludedGb } from './StorageUsageMeter';
+import StorageUsageMeter, { getCountedStorageGb, StorageExclusions } from './StorageUsageMeter';
 import { AutoDeleteClipsToggle, AutoDeleteField } from './AutoDeleteSettings';
 
 const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -139,12 +139,13 @@ export default function StorageSettingsSection({
     limitGb: number,
     onConfirm: () => void,
     onCancel?: () => void,
-    excludeClips = settings.excludeClipsFromStorageLimit,
+    exclusions?: Partial<StorageExclusions>,
   ) => {
-    const currentFolderSizeGb =
-      appState.currentFolderSizeGb -
-      (excludeClips ? sumExcludedGb(appState.content, settings.contentFolder) : 0);
-    if (limitGb >= currentFolderSizeGb) {
+    const countedGb = getCountedStorageGb(appState.contentFolderUsage, {
+      ...settings,
+      ...exclusions,
+    });
+    if (limitGb >= countedGb) {
       onConfirm();
       return;
     }
@@ -152,7 +153,7 @@ export default function StorageSettingsSection({
     openModal(
       <ConfirmationModal
         title="Storage Limit Warning"
-        description={`The storage limit (${limitGb} GB) is lower than your current folder size (${currentFolderSizeGb.toFixed(2)} GB).\n\nThis will cause older recordings to be automatically deleted to free up space.\n\nAre you sure you want to continue?`}
+        description={`The storage limit (${limitGb} GB) is lower than the storage counted toward it (${countedGb.toFixed(2)} GB).\n\nOlder recordings may be automatically deleted to free up space.\n\nDo you want to apply this limit?`}
         confirmText="Apply Limit"
         cancelText="Cancel"
         onConfirm={() => {
@@ -188,16 +189,12 @@ export default function StorageSettingsSection({
     }
   };
 
-  const handleExcludeClipsChange = (exclude: boolean) => {
+  const handleExclusionChange = (key: keyof StorageExclusions, exclude: boolean) => {
+    const updates = { [key]: exclude };
     if (exclude || settings.unlimitedStorage) {
-      updateSettings({ excludeClipsFromStorageLimit: exclude });
+      updateSettings(updates);
     } else {
-      confirmLimit(
-        settings.storageLimit,
-        () => updateSettings({ excludeClipsFromStorageLimit: false }),
-        undefined,
-        false,
-      );
+      confirmLimit(settings.storageLimit, () => updateSettings(updates), undefined, updates);
     }
   };
 
@@ -307,7 +304,9 @@ export default function StorageSettingsSection({
           <div className="mt-1 px-1 text-xs opacity-70 leading-snug">
             {settings.unlimitedStorage
               ? 'Nothing is deleted to free up space. Recording stops when the drive is almost full.'
-              : 'Older sessions and replay buffers are deleted to stay under the limit.'}
+              : settings.excludeReplayBufferFromStorageLimit
+                ? 'Older sessions are deleted to stay under the limit.'
+                : 'Older sessions and replay buffers are deleted to stay under the limit.'}
           </div>
         </div>
 
@@ -320,12 +319,11 @@ export default function StorageSettingsSection({
 
       <div className="mt-4">
         <StorageUsageMeter
-          content={appState.content}
+          usage={appState.contentFolderUsage}
           contentFolder={settings.contentFolder}
           storageLimitGb={settings.storageLimit}
           unlimited={settings.unlimitedStorage}
-          excludeClips={settings.excludeClipsFromStorageLimit}
-          usedGb={appState.currentFolderSizeGb}
+          exclusions={settings}
           driveUsedGb={driveUsedGb}
           driveFreeGb={driveFreeGb}
         />
@@ -351,16 +349,36 @@ export default function StorageSettingsSection({
         <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg border border-base-400">
           <input
             type="checkbox"
+            name="excludeReplayBufferFromStorageLimit"
+            checked={settings.excludeReplayBufferFromStorageLimit}
+            onChange={(e) =>
+              handleExclusionChange('excludeReplayBufferFromStorageLimit', e.target.checked)
+            }
+            className="checkbox checkbox-primary checkbox-sm"
+          />
+          <div>
+            <div className="font-semibold">Exclude Replay Buffer From Storage Limit</div>
+            <div className="text-sm opacity-70 mt-0.5">
+              Replay Buffers are kept when freeing up space. When on, their size is excluded from
+              the limit.
+            </div>
+          </div>
+        </label>
+        <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg border border-base-400">
+          <input
+            type="checkbox"
             name="excludeClipsFromStorageLimit"
             checked={settings.excludeClipsFromStorageLimit}
-            onChange={(e) => handleExcludeClipsChange(e.target.checked)}
+            onChange={(e) =>
+              handleExclusionChange('excludeClipsFromStorageLimit', e.target.checked)
+            }
             className="checkbox checkbox-primary checkbox-sm"
           />
           <div>
             <div className="font-semibold">Exclude Clips and Highlights From Storage Limit</div>
             <div className="text-sm opacity-70 mt-0.5">
-              Clips and highlights are never deleted to free up space. When on, only sessions and
-              replay buffers count toward the limit.
+              Clips and highlights are kept when freeing up space. When on, their size is excluded
+              from the limit.
             </div>
           </div>
         </label>

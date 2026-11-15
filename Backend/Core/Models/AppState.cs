@@ -3,11 +3,22 @@ using Segra.Backend.App;
 using Segra.Backend.Shared;
 using Segra.Backend.Platform;
 using Segra.Backend.Recorder;
+using Segra.Backend.Windows.Storage;
 using System.Text.Json.Serialization;
 using static Segra.Backend.Shared.GeneralUtils;
 
 namespace Segra.Backend.Core.Models
 {
+    internal sealed record ContentFolderUsage(long SessionsBytes, long ReplayBuffersBytes, long ClipsBytes, long HighlightsBytes, long OtherBytes)
+    {
+        internal long TotalBytes => SessionsBytes + ReplayBuffersBytes + ClipsBytes + HighlightsBytes + OtherBytes;
+
+        internal long CountedBytes(bool excludeReplayBuffers, bool excludeClips) =>
+            SessionsBytes + OtherBytes
+            + (excludeReplayBuffers ? 0 : ReplayBuffersBytes)
+            + (excludeClips ? 0 : ClipsBytes + HighlightsBytes);
+    }
+
     internal class AppState : IDisposable
     {
         private static AppState _instance = new();
@@ -30,7 +41,7 @@ namespace Segra.Backend.Core.Models
         private bool _isCheckingForUpdates = false;
         private int _maxDisplayHeight = 1080;
         private int _maxAudioTracks = 6;
-        private double _currentFolderSizeGb = 0;
+        private ContentFolderUsage _contentFolderUsage = new(0, 0, 0, 0, 0);
         private double? _recordingDriveUsedGb = null;
         private double? _recordingDriveFreeGb = null;
         private HotkeyBrokerStatus? _hotkeyBroker;
@@ -323,22 +334,20 @@ namespace Segra.Backend.Core.Models
         }
 
         [JsonPropertyName("currentFolderSizeGb")]
-        public double CurrentFolderSizeGb
-        {
-            get => _currentFolderSizeGb;
-            set => SetCurrentFolderSizeGb(value, sendToFrontend: true);
-        }
+        public double CurrentFolderSizeGb => (double)_contentFolderUsage.TotalBytes / StorageService.BYTES_PER_GB;
 
-        // sendToFrontend: false lets a silent content reload stay silent, so the new content and the
-        // cleared recording arrive in one state message instead of a stray send causing a flicker.
-        public void SetCurrentFolderSizeGb(double value, bool sendToFrontend)
+        [JsonPropertyName("contentFolderUsage")]
+        public ContentFolderUsage ContentFolderUsage => _contentFolderUsage;
+
+        // A silent reload publishes the new usage together with the updated content.
+        public void SetContentFolderUsage(ContentFolderUsage usage, bool sendToFrontend)
         {
-            if (Math.Abs(_currentFolderSizeGb - value) > 0.001)
+            if (_contentFolderUsage != usage)
             {
-                _currentFolderSizeGb = value;
+                _contentFolderUsage = usage;
                 if (sendToFrontend)
                 {
-                    SendToFrontend("State update: CurrentFolderSizeGb");
+                    SendToFrontend("State update: Content folder usage");
                 }
             }
         }

@@ -50,9 +50,12 @@ namespace Segra.Backend.Recorder
         /// </summary>
         public static bool IsEnabled => _enabled;
 
+        public static Task SendStateToFrontend() =>
+            MessageService.SendFrontendMessage("RecordingPreviewState", new { enabled = IsEnabled });
+
         /// <summary>
         /// Called when a recording starts. Caches the recording fps for logging.
-        /// Preview always starts disabled; the user toggles it via the hotkey.
+        /// Preview starts disabled and can be toggled while recording.
         /// </summary>
         public static void OnRecordingStarted(uint recordingFps)
         {
@@ -63,7 +66,7 @@ namespace Segra.Backend.Recorder
                 _enabled = false;
             }
 
-            BroadcastState();
+            _ = SendStateToFrontend();
         }
 
         /// <summary>
@@ -78,7 +81,7 @@ namespace Segra.Backend.Recorder
                 DisposeSubscriptionLocked();
             }
 
-            BroadcastState();
+            _ = SendStateToFrontend();
         }
 
         /// <summary>
@@ -102,7 +105,7 @@ namespace Segra.Backend.Recorder
                 }
             }
 
-            BroadcastState();
+            _ = SendStateToFrontend();
         }
 
         private static bool StartSubscriptionLocked()
@@ -149,11 +152,6 @@ namespace Segra.Backend.Recorder
             {
                 Log.Warning(ex, "Error disposing recording preview subscription");
             }
-        }
-
-        private static void BroadcastState()
-        {
-            _ = MessageService.SendFrontendMessage("RecordingPreviewState", new { enabled = _enabled });
         }
 
         private static void OnFrame(in RawVideoFrame frame)

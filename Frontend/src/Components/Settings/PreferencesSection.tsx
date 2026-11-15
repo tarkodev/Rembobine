@@ -3,7 +3,12 @@ import { VolumeX, Volume2, SkipBack, SkipForward } from 'lucide-react';
 import CloudBadge from '../CloudBadge';
 import DropdownSelect from '../DropdownSelect';
 import RangeSlider from '../RangeSlider';
-import { CloseButtonAction, Settings as SettingsType, StartupWindowMode } from '../../Models/types';
+import {
+  CloseButtonAction,
+  RecordingStartSoundMode,
+  Settings as SettingsType,
+  StartupWindowMode,
+} from '../../Models/types';
 import { useAppState } from '../../Context/AppStateContext';
 
 interface PreferencesSectionProps {
@@ -171,27 +176,21 @@ export default function PreferencesSection({ settings, updateSettings }: Prefere
           />
           <Volume2 className="w-4 h-4 opacity-70 shrink-0" />
         </div>
-        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              name="recordingStartSoundEnabled"
-              checked={settings.recordingStartSoundEnabled}
-              onChange={(e) => updateSettings({ recordingStartSoundEnabled: e.target.checked })}
-              className="toggle toggle-primary toggle-sm shrink-0"
-            />
+        <div className="form-control mt-4 max-w-xs">
+          <label className="label">
             <span className="label-text text-base-content">Recording Start Sound</span>
           </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              name="clipSavedSoundEnabled"
-              checked={settings.clipSavedSoundEnabled}
-              onChange={(e) => updateSettings({ clipSavedSoundEnabled: e.target.checked })}
-              className="toggle toggle-primary toggle-sm shrink-0"
-            />
-            <span className="label-text text-base-content">Clip Saved Sound</span>
-          </label>
+          <DropdownSelect
+            items={[
+              { value: 'Off', label: 'Off' },
+              { value: 'ManualOnly', label: 'Manual Only' },
+              { value: 'ManualAndAutomatic', label: 'Manual & Automatic' },
+            ]}
+            value={settings.recordingStartSoundMode}
+            onChange={(val) =>
+              updateSettings({ recordingStartSoundMode: val as RecordingStartSoundMode })
+            }
+          />
         </div>
       </div>
 

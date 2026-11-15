@@ -3,6 +3,7 @@ import type { HoverIntentHandlers } from '../Hooks/useHoverIntent';
 export type ContentType = 'Session' | 'Buffer' | 'Clip' | 'Highlight';
 
 export type RecordingMode = 'Session' | 'Buffer' | 'Hybrid';
+export type RecordingStartSoundMode = 'Off' | 'ManualOnly' | 'ManualAndAutomatic';
 
 export type AudioOutputMode = 'All' | 'GameOnly' | 'GameAndDiscord';
 export type AudioTrackType = 'mix' | 'input' | 'output';
@@ -75,11 +76,20 @@ export interface HotkeyBrokerStatus {
   actionRequired: boolean;
 }
 
+export interface ContentFolderUsage {
+  sessionsBytes: number;
+  replayBuffersBytes: number;
+  clipsBytes: number;
+  highlightsBytes: number;
+  otherBytes: number;
+}
+
 export interface State {
   gpuVendor: GpuVendor;
   integratedGpuVendors: GpuVendor[];
   preRecording?: PreRecording;
   recording?: Recording;
+  recordingPreviewEnabled: boolean;
   alwaysOnBufferActive: boolean;
   isFinishingRecording: boolean;
   hasLoadedObs: boolean;
@@ -95,6 +105,7 @@ export interface State {
   maxDisplayHeight: number;
   maxAudioTracks: number;
   currentFolderSizeGb: number;
+  contentFolderUsage: ContentFolderUsage;
   recordingDriveUsedGb: number | null;
   recordingDriveFreeGb: number | null;
   cacheFolder: string;
@@ -365,6 +376,7 @@ export interface Settings {
   codec: Codec | null;
   storageLimit: number;
   unlimitedStorage: boolean; // Never deletes old recordings to stay under storageLimit
+  excludeReplayBufferFromStorageLimit: boolean;
   excludeClipsFromStorageLimit: boolean;
   autoDeleteOldContent: boolean;
   autoDeleteAfterDays: number;
@@ -408,8 +420,7 @@ export interface Settings {
   autoRecordGames: boolean; // When false, don't auto-start recording when a game launches
   gameIntegrations: GameIntegrations;
   soundEffectsVolume: number; // Volume for UI sound effects (0.0 to 1.0)
-  recordingStartSoundEnabled: boolean;
-  clipSavedSoundEnabled: boolean;
+  recordingStartSoundMode: RecordingStartSoundMode;
   showNewBadgeOnVideos: boolean;
   showGameBackground: boolean; // Show game background while recording
   showAudioWaveformInTimeline: boolean; // Show audio waveform in video timeline
@@ -439,6 +450,7 @@ export const initialState: State = {
   gpuVendor: GpuVendor.Unknown,
   integratedGpuVendors: [],
   recording: undefined,
+  recordingPreviewEnabled: false,
   alwaysOnBufferActive: false,
   isFinishingRecording: false,
   hasLoadedObs: false,
@@ -454,6 +466,13 @@ export const initialState: State = {
   maxDisplayHeight: 1080,
   maxAudioTracks: 6,
   currentFolderSizeGb: 0,
+  contentFolderUsage: {
+    sessionsBytes: 0,
+    replayBuffersBytes: 0,
+    clipsBytes: 0,
+    highlightsBytes: 0,
+    otherBytes: 0,
+  },
   recordingDriveUsedGb: null,
   recordingDriveFreeGb: null,
   cacheFolder: '',
@@ -478,6 +497,7 @@ export const initialSettings: Settings = {
   codec: null,
   storageLimit: 100,
   unlimitedStorage: false,
+  excludeReplayBufferFromStorageLimit: true,
   excludeClipsFromStorageLimit: false,
   autoDeleteOldContent: false,
   autoDeleteAfterDays: 180,
@@ -517,8 +537,7 @@ export const initialSettings: Settings = {
   clipKeepSeparateAudioTracks: false,
   copyCompressSizesMb: [20, 50, 100, 500],
   soundEffectsVolume: 1,
-  recordingStartSoundEnabled: true,
-  clipSavedSoundEnabled: true,
+  recordingStartSoundMode: 'ManualOnly',
   showNewBadgeOnVideos: false,
   showGameBackground: true,
   showAudioWaveformInTimeline: true,

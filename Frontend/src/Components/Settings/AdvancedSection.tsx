@@ -201,7 +201,7 @@ export default function AdvancedSection({
             </Button>
           </div>
           <div>
-            Segra{' '}
+            Segrabi{' '}
             {__APP_VERSION__ === 'Developer Preview' ? __APP_VERSION__ : 'v' + __APP_VERSION__}
           </div>
         </div>

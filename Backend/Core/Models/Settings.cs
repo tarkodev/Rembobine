@@ -377,6 +377,9 @@ namespace Segra.Backend.Core.Models
             }
         }
 
+        [JsonPropertyName("excludeReplayBufferFromStorageLimit")]
+        public bool ExcludeReplayBufferFromStorageLimit { get; set; } = true;
+
         [JsonPropertyName("excludeClipsFromStorageLimit")]
         public bool ExcludeClipsFromStorageLimit
         {
@@ -839,11 +842,8 @@ namespace Segra.Backend.Core.Models
             }
         }
 
-        [JsonPropertyName("recordingStartSoundEnabled")]
-        public bool RecordingStartSoundEnabled { get; set; } = true;
-
-        [JsonPropertyName("clipSavedSoundEnabled")]
-        public bool ClipSavedSoundEnabled { get; set; } = true;
+        [JsonPropertyName("recordingStartSoundMode")]
+        public RecordingStartSoundMode RecordingStartSoundMode { get; set; } = RecordingStartSoundMode.ManualOnly;
 
         [JsonPropertyName("showNewBadgeOnVideos")]
         public bool ShowNewBadgeOnVideos
@@ -1552,6 +1552,14 @@ namespace Segra.Backend.Core.Models
         Session,
         Buffer,
         Hybrid
+    }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<RecordingStartSoundMode>))]
+    public enum RecordingStartSoundMode
+    {
+        Off,
+        ManualOnly,
+        ManualAndAutomatic
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter<GpuPriority>))]
