@@ -939,7 +939,7 @@ namespace Segra.Backend.Games
             }
         }
 
-        private static bool IsProcessRunning(int pid)
+        internal static bool IsProcessRunning(int pid)
         {
             if (pid <= 0) return false;
 

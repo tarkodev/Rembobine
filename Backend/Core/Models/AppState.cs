@@ -1,5 +1,6 @@
 using Serilog;
 using Segra.Backend.App;
+using Segra.Backend.Media;
 using Segra.Backend.Shared;
 using Segra.Backend.Platform;
 using Segra.Backend.Recorder;
@@ -64,6 +65,19 @@ namespace Segra.Backend.Core.Models
             UpdateAudioDevices();
             UpdateDisplays();
             _ = Task.Run(UpdateWebcams);
+        }
+
+        [JsonPropertyName("screenshots")]
+        public IReadOnlyList<Screenshot> Screenshots { get; private set; } = [];
+
+        public void SetScreenshots(IReadOnlyList<Screenshot> screenshots, bool sendToFrontend)
+        {
+            if (Screenshots.SequenceEqual(screenshots))
+                return;
+
+            Screenshots = screenshots;
+            if (sendToFrontend)
+                SendToFrontend("State update: Screenshots");
         }
 
         [JsonPropertyName("gpuVendor")]

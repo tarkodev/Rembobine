@@ -145,6 +145,7 @@ namespace Segra.Backend.Recorder
         private static uint _currentBaseHeight;
         private static uint _currentOutputWidth;
         private static uint _currentOutputHeight;
+        private static int _screenshotInProgress;
 
         // libobs renders a frame at this rate even while nothing records
         private const uint IdleCanvasWidth = 64;
@@ -240,6 +241,43 @@ namespace Segra.Backend.Recorder
             _ = SendFrontendMessage("ReplayBufferSaveStarted", new { });
             _ = Task.Run(SaveReplayBuffer);
             _ = Task.Run(() => PlatformServices.Sound.Play(Properties.Resources.bookmark, Settings.Instance.SoundEffectsVolume));
+        }
+
+        internal static async Task TakeScreenshotAsync(Recording recording)
+        {
+            if (recording.Pid is not int pid || Interlocked.Exchange(ref _screenshotInProgress, 1) != 0)
+                return;
+
+            try
+            {
+                if (!GameDetectionService.IsProcessRunning(pid) || !await _recorderLock.WaitAsync(0))
+                    return;
+
+                ScreenshotService.OutputFrame frame;
+                try
+                {
+                    if (_isExiting || _isStoppingOrStopped || !ReferenceEquals(recording, AppState.Instance.Recording)
+                        || (_output?.IsActive != true && _bufferOutput?.IsActive != true))
+                        return;
+
+                    frame = await ScreenshotService.CaptureOutputFrameAsync(_currentOutputWidth, _currentOutputHeight, _isHdrRecording);
+                }
+                finally
+                {
+                    _recorderLock.Release();
+                }
+
+                await ScreenshotService.SaveOutputFrameAsync(frame, recording.Game);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not capture a screenshot for {Game}", recording.Game);
+                _ = ShowModal("Screenshot failed", "Segrabi could not save a screenshot of the game. Check the log for more details.", "error");
+            }
+            finally
+            {
+                Volatile.Write(ref _screenshotInProgress, 0);
+            }
         }
 
         public static async Task<bool> SaveReplayBuffer()
@@ -2395,6 +2433,7 @@ namespace Segra.Backend.Recorder
                     if (recording != null)
                         AppState.Instance.UpdateRecordingEndTime(DateTime.Now);
 
+                    bool stoppedCleanly = Volatile.Read(ref _unexpectedStopHandled) == 0;
                     try
                     {
                         if (_bufferOutput != null)
@@ -2410,6 +2449,7 @@ namespace Segra.Backend.Recorder
                     catch (Exception ex)
                     {
                         Log.Error(ex, "Failed to stop the recording outputs");
+                        stoppedCleanly = false;
                     }
 
                     DisposeRecording();
@@ -2419,6 +2459,8 @@ namespace Segra.Backend.Recorder
                     AppState.Instance.Recording = null;
                     AppState.Instance.PreRecording = null;
                     Log.Information("Recording stopped and disposed.");
+                    if (recording != null && stoppedCleanly && !_isExiting)
+                        PlayRecordingSound("stop", Settings.Instance.RecordingStopSoundMode, userRequested);
                 }
                 finally
                 {
@@ -4518,24 +4560,33 @@ namespace Segra.Backend.Recorder
 
         private static void PlayRecordingStartSound(bool userInitiated, bool alwaysOn)
         {
-            var mode = Settings.Instance.RecordingStartSoundMode;
-            if (!alwaysOn && (mode == RecordingStartSoundMode.ManualAndAutomatic
-                || (mode == RecordingStartSoundMode.ManualOnly && userInitiated)))
+            if (!alwaysOn)
+                PlayRecordingSound("start", Settings.Instance.RecordingStartSoundMode, userInitiated);
+        }
+
+        private static void PlayRecordingSound(string resourceName, RecordingSoundMode mode, bool userInitiated)
+        {
+            if (mode == RecordingSoundMode.ManualAndAutomatic
+                || (mode == RecordingSoundMode.ManualOnly && userInitiated))
             {
-                _ = Task.Run(() => PlaySound("start"));
+                _ = Task.Run(() => PlaySound(resourceName));
             }
         }
 
         public static void PlaySound(string resourceName, int delay = 0)
         {
             Thread.Sleep(delay);
+            float volume = Settings.Instance.SoundEffectsVolume;
+            if (volume <= 0)
+                return;
+
             using var stream = Properties.Resources.ResourceManager.GetStream(resourceName);
             if (stream == null)
                 throw new ArgumentException($"Resource '{resourceName}' not found or not a stream.");
 
             using var ms = new MemoryStream();
             stream.CopyTo(ms);
-            PlatformServices.Sound.Play(ms.ToArray(), Settings.Instance.SoundEffectsVolume);
+            PlatformServices.Sound.Play(ms.ToArray(), volume);
         }
 
 

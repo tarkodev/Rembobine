@@ -165,12 +165,13 @@ namespace Segra.Backend.Platform.Windows
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileName : null;
         });
 
-        public Task<string[]?> PickFilesAsync(string title, string filterDescription, string extension) => RunSta<string[]?>(() =>
+        public Task<string[]?> PickFilesAsync(string title, string filterDescription, params string[] extensions) => RunSta<string[]?>(() =>
         {
+            string patterns = string.Join(';', extensions.Select(extension => $"*.{extension}"));
             using var ofd = new OpenFileDialog
             {
                 Title = title,
-                Filter = $"{filterDescription}|*.{extension}",
+                Filter = $"{filterDescription}|{patterns}",
                 CheckFileExists = true,
                 CheckPathExists = true,
                 Multiselect = true,

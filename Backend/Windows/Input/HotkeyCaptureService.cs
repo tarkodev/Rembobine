@@ -155,7 +155,7 @@ namespace Segra.Backend.Windows.Input
         {
             lock (_lock)
             {
-                var hotkeys = Settings.Instance.Hotkeys?.Where(k => k.Enabled).ToList() ?? [];
+                var hotkeys = Settings.Instance.Hotkeys?.Where(k => k.Enabled && k.Keys?.Count > 0).ToList() ?? [];
 
 #if WINDOWS
                 // The broker is the sole source while connected so a press is never delivered twice.
@@ -399,6 +399,11 @@ namespace Segra.Backend.Windows.Input
                         Log.Information("Hotkey: toggling recording preview");
                         RecordingPreviewService.Toggle();
                     }
+                    break;
+
+                case HotkeyAction.TakeScreenshot:
+                    if (recording?.Pid != null)
+                        _ = Task.Run(() => OBSService.TakeScreenshotAsync(recording));
                     break;
             }
         }

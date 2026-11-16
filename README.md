@@ -5,15 +5,20 @@ focused on gameplay screenshots and more control over recording and playback.
 
 ## Roadmap
 
-- [ ] Add a **📷 Screenshots** sidebar section and a configurable **Take Screenshot** hotkey for in-game captures.
-- [ ] Add **Save Frame as Screenshot** to the paused video player. Save the displayed frame to the same library.
+- [x] Add **📷 Screenshots** below **Highlights** and a configurable **Take Screenshot** hotkey. It saves a PNG
+  from the active game recording or replay buffer. Assign a key under **Settings → Hotkeys**.
+- [x] Add **Save Frame as Screenshot** to the paused video player. Both capture methods save to the same gallery
+  and play a shutter sound at the configured **Sound Effects Volume**.
+- [x] Add image import, game filters, sorting, and a dedicated screenshot viewer with navigation, zoom, and fullscreen.
 - [x] Add **Recording Start Sound** under **Settings → Preferences → App**, below **Sound Effects Volume**.
   **Off** mutes the start beep. **Manual Only** (default) plays it when you start a recording yourself.
   **Manual & Automatic** also plays it when Segrabi starts a recording automatically. Saving a replay
   plays its own confirmation at the configured **Sound Effects Volume**.
+- [x] Add **Recording Stop Sound** next to **Recording Start Sound** with **Off**, **Manual Only** (default),
+  and **Manual & Automatic**.
 - [x] Add **Enable Recording Preview** and **Disable Recording Preview** to the **⋯** menu on the active
   recording card. The menu shows the action for the current preview state.
-- [ ] Disable double-click fullscreen in the clip player. Keep the fullscreen button.
+- [x] Disable double-click fullscreen in the clip player. Keep the fullscreen button.
 - [x] Add **Exclude Replay Buffer From Storage Limit** under **Settings → Storage**, above
   **Exclude Clips and Highlights From Storage Limit**. It is on by default. While on, saved replays
   are excluded from the storage quota and the cleanup it triggers. With a quota set, **Storage Usage** shows their size

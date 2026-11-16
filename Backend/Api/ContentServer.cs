@@ -73,6 +73,10 @@ namespace Segra.Backend.Api
                 {
                     await HandleContentRequest(context);
                 }
+                else if (path == "/api/screenshots")
+                {
+                    await HandleScreenshotUpload(context);
+                }
                 else if (DiscordLoginService.IsCallbackPath(path))
                 {
                     await DiscordLoginService.HandleCallbackAsync(context);
@@ -246,6 +250,14 @@ namespace Segra.Backend.Api
             {
                 await StreamJsonFile(fileName, response);
             }
+            else if (ScreenshotService.GetScreenshotContentType(fileName) is string imageType)
+            {
+                response.ContentType = imageType;
+                await using var image = new FileStream(fileName, FileMode.Open, FileAccess.Read,
+                    FileShare.Read | FileShare.Delete, 81920, useAsync: true);
+                response.ContentLength64 = image.Length;
+                await image.CopyToAsync(response.OutputStream);
+            }
             else
             {
                 response.StatusCode = (int)HttpStatusCode.BadRequest;
@@ -254,6 +266,57 @@ namespace Segra.Backend.Api
                 {
                     await writer.WriteAsync("Unsupported file type.");
                 }
+            }
+        }
+
+        private static async Task HandleScreenshotUpload(HttpListenerContext context)
+        {
+            var request = context.Request;
+            var response = context.Response;
+            if (!IsLocalOrigin(request.Headers["Origin"]))
+            {
+                response.StatusCode = (int)HttpStatusCode.Forbidden;
+                return;
+            }
+
+            AddCorsHeader(context);
+            if (request.HttpMethod == "OPTIONS")
+            {
+                response.AddHeader("Access-Control-Allow-Methods", "POST");
+                response.AddHeader("Access-Control-Allow-Headers", "Content-Type");
+                response.StatusCode = (int)HttpStatusCode.NoContent;
+                return;
+            }
+
+            if (request.HttpMethod != "POST")
+            {
+                response.StatusCode = (int)HttpStatusCode.MethodNotAllowed;
+                return;
+            }
+
+            if (!string.Equals(request.ContentType, "image/png", StringComparison.OrdinalIgnoreCase)
+                || request.ContentLength64 < ScreenshotService.PngHeaderBytes)
+            {
+                response.StatusCode = (int)HttpStatusCode.BadRequest;
+                return;
+            }
+
+            if (request.ContentLength64 > ScreenshotService.MaxUploadBytes)
+            {
+                response.StatusCode = (int)HttpStatusCode.RequestEntityTooLarge;
+                return;
+            }
+
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                await ScreenshotService.SavePlayerFrameAsync(request.InputStream, request.ContentLength64,
+                    request.QueryString["game"], timeout.Token);
+                response.StatusCode = (int)HttpStatusCode.Created;
+            }
+            catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
+            {
+                response.StatusCode = (int)HttpStatusCode.BadRequest;
             }
         }
 

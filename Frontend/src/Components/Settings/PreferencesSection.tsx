@@ -5,7 +5,7 @@ import DropdownSelect from '../DropdownSelect';
 import RangeSlider from '../RangeSlider';
 import {
   CloseButtonAction,
-  RecordingStartSoundMode,
+  RecordingSoundMode,
   Settings as SettingsType,
   StartupWindowMode,
 } from '../../Models/types';
@@ -15,6 +15,12 @@ interface PreferencesSectionProps {
   settings: SettingsType;
   updateSettings: (updates: Partial<SettingsType>) => void;
 }
+
+const recordingSoundModes = [
+  { value: 'Off', label: 'Off' },
+  { value: 'ManualOnly', label: 'Manual Only' },
+  { value: 'ManualAndAutomatic', label: 'Manual & Automatic' },
+];
 
 export default function PreferencesSection({ settings, updateSettings }: PreferencesSectionProps) {
   const appState = useAppState();
@@ -176,21 +182,31 @@ export default function PreferencesSection({ settings, updateSettings }: Prefere
           />
           <Volume2 className="w-4 h-4 opacity-70 shrink-0" />
         </div>
-        <div className="form-control mt-4 max-w-xs">
-          <label className="label">
-            <span className="label-text text-base-content">Recording Start Sound</span>
-          </label>
-          <DropdownSelect
-            items={[
-              { value: 'Off', label: 'Off' },
-              { value: 'ManualOnly', label: 'Manual Only' },
-              { value: 'ManualAndAutomatic', label: 'Manual & Automatic' },
-            ]}
-            value={settings.recordingStartSoundMode}
-            onChange={(val) =>
-              updateSettings({ recordingStartSoundMode: val as RecordingStartSoundMode })
-            }
-          />
+        <div className="mt-4 grid max-w-2xl gap-4 sm:grid-cols-2">
+          <div className="form-control">
+            <label className="label">
+              <span className="label-text text-base-content">Recording Start Sound</span>
+            </label>
+            <DropdownSelect
+              items={recordingSoundModes}
+              value={settings.recordingStartSoundMode}
+              onChange={(val) =>
+                updateSettings({ recordingStartSoundMode: val as RecordingSoundMode })
+              }
+            />
+          </div>
+          <div className="form-control">
+            <label className="label">
+              <span className="label-text text-base-content">Recording Stop Sound</span>
+            </label>
+            <DropdownSelect
+              items={recordingSoundModes}
+              value={settings.recordingStopSoundMode}
+              onChange={(val) =>
+                updateSettings({ recordingStopSoundMode: val as RecordingSoundMode })
+              }
+            />
+          </div>
         </div>
       </div>
 

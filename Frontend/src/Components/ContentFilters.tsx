@@ -24,6 +24,7 @@ export interface ContentFiltersProps {
   sectionId: string;
   selectedGame: string;
   sortOption: SortOption;
+  showDurationSort?: boolean;
 }
 
 function GameIcon({ src }: { src: string | null }) {
@@ -59,6 +60,7 @@ export default function ContentFilters({
   sectionId,
   selectedGame,
   sortOption,
+  showDurationSort = true,
 }: ContentFiltersProps) {
   // Persist changes to localStorage
   useEffect(() => {
@@ -174,17 +176,19 @@ export default function ContentFilters({
               <span>Size</span>
             </a>
           </li>
-          <li>
-            <a
-              className={`flex w-full items-center gap-2 px-4 py-3 ${
-                sortOption === 'duration' ? 'text-primary' : 'text-white'
-              } hover:bg-white/5 active:text-primary! active:bg-white/5! rounded-lg transition-all duration-200 hover:pl-5 outline-none`}
-              onClick={() => handleSortChange('duration')}
-            >
-              <Timer size={20} />
-              <span>Duration</span>
-            </a>
-          </li>
+          {showDurationSort && (
+            <li>
+              <a
+                className={`flex w-full items-center gap-2 px-4 py-3 ${
+                  sortOption === 'duration' ? 'text-primary' : 'text-white'
+                } hover:bg-white/5 active:text-primary! active:bg-white/5! rounded-lg transition-all duration-200 hover:pl-5 outline-none`}
+                onClick={() => handleSortChange('duration')}
+              >
+                <Timer size={20} />
+                <span>Duration</span>
+              </a>
+            </li>
+          )}
           <li>
             <a
               className={`flex w-full items-center gap-2 px-4 py-3 ${

@@ -196,6 +196,25 @@ namespace Segra.Backend.App
                             root.TryGetProperty("Parameters", out JsonElement deleteContentParameterElement);
                             _ = Task.Run(() => HandleDeleteContent(deleteContentParameterElement));
                             break;
+                        case "DeleteScreenshot":
+                            if (root.TryGetProperty("Parameters", out var screenshotParameters) &&
+                                screenshotParameters.TryGetProperty("FilePath", out var screenshotFile) &&
+                                screenshotFile.GetString() is string screenshotPath)
+                            {
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        ScreenshotService.Delete(screenshotPath);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Log.Warning(ex, "Failed to delete screenshot");
+                                        await ShowModal("Could not delete screenshot", "Check that the file is accessible and try again.", "error");
+                                    }
+                                });
+                            }
+                            break;
                         case "DeleteMultipleContent":
                             root.TryGetProperty("Parameters", out JsonElement deleteMultipleContentParameterElement);
                             _ = Task.Run(() => HandleDeleteMultipleContent(deleteMultipleContentParameterElement));

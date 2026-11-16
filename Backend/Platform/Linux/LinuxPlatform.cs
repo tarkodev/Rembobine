@@ -219,10 +219,11 @@ namespace Segra.Backend.Platform.Linux
             return string.IsNullOrEmpty(result) ? null : result;
         }
 
-        public async Task<string[]?> PickFilesAsync(string title, string filterDescription, string extension)
+        public async Task<string[]?> PickFilesAsync(string title, string filterDescription, params string[] extensions)
         {
+            string patterns = string.Join(' ', extensions.Select(extension => $"*.{extension}"));
             string result = await LinuxProcess.RunCaptureAsync("zenity",
-                $"--file-selection --multiple --separator=\"|\" --title=\"{Escape(title)}\" --file-filter=\"{Escape(filterDescription)} | *.{extension}\"", onHost: true);
+                $"--file-selection --multiple --separator=\"|\" --title=\"{Escape(title)}\" --file-filter=\"{Escape(filterDescription)} | {patterns}\"", onHost: true);
             result = result.Trim();
             if (string.IsNullOrEmpty(result)) return null;
             return result.Split('|', StringSplitOptions.RemoveEmptyEntries);

@@ -23,6 +23,7 @@ import {
   Settings,
   History,
   Crown,
+  Camera,
   Monitor,
   Play,
   LucideIcon,
@@ -42,6 +43,7 @@ const MENU_ICONS: Record<MenuItemId, LucideIcon> = {
   'Replay Buffer': History,
   Clips: Clapperboard,
   Highlights: Crown,
+  Screenshots: Camera,
   Settings: Settings,
 };
 
@@ -68,9 +70,11 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
     // Force-show items that contain content so the user always has a way to reach their files.
     return items.filter(
       (item) =>
-        item.id === 'Settings' || item.visible || menuItemHasContent(item.id, appState.content),
+        item.id === 'Settings' ||
+        item.visible ||
+        menuItemHasContent(item.id, appState.content, appState.screenshots),
     );
-  }, [settings.menuItems, appState.content]);
+  }, [settings.menuItems, appState.content, appState.screenshots]);
 
   const computeIndicatorPosition = () => {
     if (!visibleMenuItems.some((item) => item.id === selectedMenu)) return;

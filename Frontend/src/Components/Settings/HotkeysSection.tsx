@@ -58,6 +58,8 @@ const getActionLabel = (action: HotkeyAction): string => {
       return 'Create Bookmark';
     case HotkeyAction.SaveReplayBuffer:
       return 'Save Replay Buffer';
+    case HotkeyAction.TakeScreenshot:
+      return 'Take Screenshot';
     case HotkeyAction.ToggleRecording:
       return 'Start / Stop Recording';
     case HotkeyAction.TogglePreview:
@@ -71,16 +73,18 @@ const getActionHint = (action: HotkeyAction): string | null => {
   switch (action) {
     case HotkeyAction.ToggleRecording:
       return 'Records the focused game, or your display if no game is focused. Stops any active recording.';
+    case HotkeyAction.TakeScreenshot:
+      return 'Saves a PNG from the active game recording or replay buffer.';
     default:
       return null;
   }
 };
 
-// Moment-saving actions first, recording controls second
 const ACTION_ORDER: HotkeyAction[] = [
   HotkeyAction.SaveReplayBuffer,
   HotkeyAction.CreateBookmark,
   HotkeyAction.ToggleRecording,
+  HotkeyAction.TakeScreenshot,
   HotkeyAction.TogglePreview,
 ];
 
@@ -255,7 +259,9 @@ export default function HotkeysSection({ settings, updateSettings }: HotkeysSect
                 setPressedKeys([]);
               }}
             >
-              {capturing === index ? getCaptureLabel(pressedKeys) : formatKeys(hotkey.keys)}
+              {capturing === index
+                ? getCaptureLabel(pressedKeys)
+                : formatKeys(hotkey.keys) || 'Unbound'}
             </button>
           </div>
         ))}

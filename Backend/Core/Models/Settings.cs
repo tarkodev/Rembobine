@@ -16,6 +16,7 @@ namespace Segra.Backend.Core.Models
             "Replay Buffer",
             "Clips",
             "Highlights",
+            "Screenshots",
             "Settings"
         };
 
@@ -126,7 +127,8 @@ namespace Segra.Backend.Core.Models
                 new Hotkey(new List<int> { 119 }, HotkeyAction.CreateBookmark, true), // 119 is F8
                 new Hotkey(new List<int> { 120 }, HotkeyAction.ToggleRecording, true), // 120 is F9
                 new Hotkey(new List<int> { 121 }, HotkeyAction.SaveReplayBuffer, true), // 121 is F10
-                new Hotkey(new List<int> { 122 }, HotkeyAction.TogglePreview, true) // 122 is F11
+                new Hotkey(new List<int> { 122 }, HotkeyAction.TogglePreview, true), // 122 is F11
+                new Hotkey([], HotkeyAction.TakeScreenshot)
             };
         }
 
@@ -843,7 +845,10 @@ namespace Segra.Backend.Core.Models
         }
 
         [JsonPropertyName("recordingStartSoundMode")]
-        public RecordingStartSoundMode RecordingStartSoundMode { get; set; } = RecordingStartSoundMode.ManualOnly;
+        public RecordingSoundMode RecordingStartSoundMode { get; set; } = RecordingSoundMode.ManualOnly;
+
+        [JsonPropertyName("recordingStopSoundMode")]
+        public RecordingSoundMode RecordingStopSoundMode { get; set; } = RecordingSoundMode.ManualOnly;
 
         [JsonPropertyName("showNewBadgeOnVideos")]
         public bool ShowNewBadgeOnVideos
@@ -1119,17 +1124,17 @@ namespace Segra.Backend.Core.Models
                     });
                 }
 
-                // Append any known ids that were missing (e.g., new menu items added in a later version)
+                // Keep the user's order and insert Screenshots after Highlights in existing profiles.
                 foreach (var id in KnownMenuItemIds)
                 {
-                    if (!seen.Contains(id))
-                    {
-                        sanitized.Add(new MenuItemPreference
-                        {
-                            Id = id,
-                            Visible = true
-                        });
-                    }
+                    if (!seen.Add(id))
+                        continue;
+
+                    var item = new MenuItemPreference { Id = id, Visible = true };
+                    if (id == "Screenshots")
+                        sanitized.Insert(sanitized.FindIndex(entry => entry.Id == "Highlights") + 1, item);
+                    else
+                        sanitized.Add(item);
                 }
 
                 _menuItems = sanitized;
@@ -1554,8 +1559,8 @@ namespace Segra.Backend.Core.Models
         Hybrid
     }
 
-    [JsonConverter(typeof(JsonStringEnumConverter<RecordingStartSoundMode>))]
-    public enum RecordingStartSoundMode
+    [JsonConverter(typeof(JsonStringEnumConverter<RecordingSoundMode>))]
+    public enum RecordingSoundMode
     {
         Off,
         ManualOnly,

@@ -3,7 +3,7 @@ import type { HoverIntentHandlers } from '../Hooks/useHoverIntent';
 export type ContentType = 'Session' | 'Buffer' | 'Clip' | 'Highlight';
 
 export type RecordingMode = 'Session' | 'Buffer' | 'Hybrid';
-export type RecordingStartSoundMode = 'Off' | 'ManualOnly' | 'ManualAndAutomatic';
+export type RecordingSoundMode = 'Off' | 'ManualOnly' | 'ManualAndAutomatic';
 
 export type AudioOutputMode = 'All' | 'GameOnly' | 'GameAndDiscord';
 export type AudioTrackType = 'mix' | 'input' | 'output';
@@ -84,6 +84,16 @@ export interface ContentFolderUsage {
   otherBytes: number;
 }
 
+export interface Screenshot {
+  fileName: string;
+  filePath: string;
+  createdAt: string;
+  title: string;
+  game: string | null;
+  fileSizeBytes: number;
+  isImported: boolean;
+}
+
 export interface State {
   gpuVendor: GpuVendor;
   integratedGpuVendors: GpuVendor[];
@@ -94,6 +104,7 @@ export interface State {
   isFinishingRecording: boolean;
   hasLoadedObs: boolean;
   content: Content[];
+  screenshots: Screenshot[];
   inputDevices: AudioDevice[];
   outputDevices: AudioDevice[];
   displays: Display[];
@@ -143,6 +154,7 @@ export enum HotkeyAction {
   SaveReplayBuffer = 'SaveReplayBuffer',
   ToggleRecording = 'ToggleRecording',
   TogglePreview = 'TogglePreview',
+  TakeScreenshot = 'TakeScreenshot',
 }
 
 export interface Hotkey {
@@ -318,7 +330,8 @@ export type ClipPreset =
 export type VideoQualityPreset = 'low' | 'standard' | 'high' | 'custom';
 export type ClipQualityPreset = 'low' | 'standard' | 'high' | 'custom';
 
-export type MenuItemId = 'Full Sessions' | 'Replay Buffer' | 'Clips' | 'Highlights' | 'Settings';
+export type MenuItemId =
+  'Full Sessions' | 'Replay Buffer' | 'Clips' | 'Highlights' | 'Screenshots' | 'Settings';
 
 export interface MenuItemPreference {
   id: MenuItemId;
@@ -330,6 +343,7 @@ export const DEFAULT_MENU_ITEMS: MenuItemPreference[] = [
   { id: 'Replay Buffer', visible: true },
   { id: 'Clips', visible: true },
   { id: 'Highlights', visible: true },
+  { id: 'Screenshots', visible: true },
   { id: 'Settings', visible: true },
 ];
 
@@ -338,12 +352,18 @@ const MENU_ITEM_CONTENT_TYPES: Record<MenuItemId, ContentType[]> = {
   'Replay Buffer': ['Buffer'],
   Clips: ['Clip'],
   Highlights: ['Highlight'],
+  Screenshots: [],
   Settings: [],
 };
 
-export const menuItemHasContent = (id: MenuItemId, content: Content[]): boolean => {
+export const menuItemHasContent = (
+  id: MenuItemId,
+  content: Content[],
+  screenshots: Screenshot[],
+): boolean => {
+  if (id === 'Screenshots') return screenshots.length > 0;
   const types = MENU_ITEM_CONTENT_TYPES[id];
-  if (types.length === 0) return false;
+  if (!types?.length) return false;
   return content.some((c) => types.includes(c.type));
 };
 
@@ -420,7 +440,8 @@ export interface Settings {
   autoRecordGames: boolean; // When false, don't auto-start recording when a game launches
   gameIntegrations: GameIntegrations;
   soundEffectsVolume: number; // Volume for UI sound effects (0.0 to 1.0)
-  recordingStartSoundMode: RecordingStartSoundMode;
+  recordingStartSoundMode: RecordingSoundMode;
+  recordingStopSoundMode: RecordingSoundMode;
   showNewBadgeOnVideos: boolean;
   showGameBackground: boolean; // Show game background while recording
   showAudioWaveformInTimeline: boolean; // Show audio waveform in video timeline
@@ -455,6 +476,7 @@ export const initialState: State = {
   isFinishingRecording: false,
   hasLoadedObs: false,
   content: [],
+  screenshots: [],
   inputDevices: [],
   outputDevices: [],
   displays: [],
@@ -538,6 +560,7 @@ export const initialSettings: Settings = {
   copyCompressSizesMb: [20, 50, 100, 500],
   soundEffectsVolume: 1,
   recordingStartSoundMode: 'ManualOnly',
+  recordingStopSoundMode: 'ManualOnly',
   showNewBadgeOnVideos: false,
   showGameBackground: true,
   showAudioWaveformInTimeline: true,
@@ -566,6 +589,7 @@ export const initialSettings: Settings = {
     { keys: [120], action: HotkeyAction.ToggleRecording, enabled: true }, // 120 is F9
     { keys: [121], action: HotkeyAction.SaveReplayBuffer, enabled: true }, // 121 is F10
     { keys: [122], action: HotkeyAction.TogglePreview, enabled: true }, // 122 is F11
+    { keys: [], action: HotkeyAction.TakeScreenshot, enabled: true },
   ],
   games: [],
   autoRecordGames: true,

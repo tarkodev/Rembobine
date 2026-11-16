@@ -1,6 +1,9 @@
 import { sendMessageToBackend } from './MessageUtils';
 import { ContentType } from '../Models/types';
 
+export const getContentFileUrl = (filePath: string) =>
+  'http://localhost:2222/api/content?input=' + encodeURIComponent(filePath);
+
 export const openFileLocation = (filePath: string) => {
   if (!filePath) return;
   sendMessageToBackend('OpenFileLocation', { FilePath: filePath });

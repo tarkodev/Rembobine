@@ -5,6 +5,7 @@ import Sessions from './Pages/sessions';
 import Clips from './Pages/clips';
 import ReplayBuffer from './Pages/replay-buffer';
 import Highlights from './Pages/highlights';
+import Screenshots from './Pages/screenshots';
 import { SettingsProvider } from './Context/SettingsContext';
 import { AppStateProvider } from './Context/AppStateContext';
 import Video from './Pages/video';
@@ -74,7 +75,7 @@ function App() {
     const isReachable = (id: MenuItemId) =>
       id === 'Settings' ||
       items.find((m) => m.id === id)?.visible === true ||
-      menuItemHasContent(id, appState.content);
+      menuItemHasContent(id, appState.content, appState.screenshots);
 
     if (isReachable(selectedMenu as MenuItemId)) return;
 
@@ -91,6 +92,7 @@ function App() {
     selectedMenu,
     setSelectedMenu,
     appState.content,
+    appState.screenshots,
   ]);
 
   const handleMenuSelection = (menu: MenuItemId | string) => {
@@ -116,6 +118,8 @@ function App() {
         return <Clips />;
       case 'Highlights':
         return <Highlights />;
+      case 'Screenshots':
+        return <Screenshots />;
       case 'Settings':
         return <Settings />;
       default:

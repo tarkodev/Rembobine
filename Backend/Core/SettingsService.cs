@@ -389,6 +389,13 @@ namespace Segra.Backend.Core
                 hasChanges = true;
             }
 
+            if (settings.RecordingStopSoundMode != updatedSettings.RecordingStopSoundMode)
+            {
+                Log.Information($"RecordingStopSoundMode changed from '{settings.RecordingStopSoundMode}' to '{updatedSettings.RecordingStopSoundMode}'");
+                settings.RecordingStopSoundMode = updatedSettings.RecordingStopSoundMode;
+                hasChanges = true;
+            }
+
             if (settings.ShowNewBadgeOnVideos != updatedSettings.ShowNewBadgeOnVideos)
             {
                 Log.Information($"ShowNewBadgeOnVideos changed from '{settings.ShowNewBadgeOnVideos}' to '{updatedSettings.ShowNewBadgeOnVideos}'");
@@ -1200,6 +1207,7 @@ namespace Segra.Backend.Core
 
             await ContentService.ReconcileGameNamesByIgdb(content);
 
+            ScreenshotService.RefreshLibrary(sendToFrontend: false);
             AppState.Instance.SetContent(content, sendToFrontend);
 
             // Honor sendToFrontend so a silent reload doesn't leak a state send via the folder size.

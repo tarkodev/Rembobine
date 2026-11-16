@@ -8,11 +8,12 @@ namespace Segra.Backend.Shared
     /// </summary>
     public static class FolderNames
     {
-        // Video content folder names
+        // Media folder names
         public const string Sessions = "Full Sessions";
         public const string Buffers = "Replay Buffers";
         public const string Clips = "Clips";
         public const string Highlights = "Highlights";
+        public const string Screenshots = "Screenshots";
         public const string Webcam = "Webcam";
 
         // Legacy folder names (for migration purposes)

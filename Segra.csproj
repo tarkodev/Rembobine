@@ -139,6 +139,8 @@
   <ItemGroup>
     <EmbeddedResource Remove="Resources\error.wav" />
     <EmbeddedResource Remove="Resources\start.wav" />
+    <EmbeddedResource Remove="Resources\screenshot.wav" />
+    <EmbeddedResource Remove="Resources\stop.wav" />
   </ItemGroup>
 
   <ItemGroup>

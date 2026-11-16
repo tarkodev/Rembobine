@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Clapperboard,
   Crown,
+  Camera,
   Eye,
   EyeOff,
   GripVertical,
@@ -34,6 +35,7 @@ const MENU_ICONS: Record<MenuItemId, LucideIcon> = {
   'Replay Buffer': History,
   Clips: Clapperboard,
   Highlights: Crown,
+  Screenshots: Camera,
   Settings: SettingsIcon,
 };
 
@@ -294,7 +296,9 @@ export default function MenuCustomizationSection({
       <div className="space-y-2 max-w-md">
         {localItems.map((item, index) => {
           const forceShownReason: 'content' | null =
-            !item.visible && item.id !== 'Settings' && menuItemHasContent(item.id, appState.content)
+            !item.visible &&
+            item.id !== 'Settings' &&
+            menuItemHasContent(item.id, appState.content, appState.screenshots)
               ? 'content'
               : null;
           return (

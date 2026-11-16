@@ -25,6 +25,12 @@ namespace Segra.Backend.Media
                 }
 
                 string sectionId = sectionIdElement.GetString()!;
+                if (sectionId == "screenshots")
+                {
+                    await ScreenshotService.PickAndImportAsync(importId);
+                    return;
+                }
+
                 Content.ContentType contentType;
 
                 switch (sectionId)

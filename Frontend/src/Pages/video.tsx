@@ -3,7 +3,7 @@ import { Content, BookmarkType, Segment, Bookmark } from '../Models/types';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
 import { useAppState } from '../Context/AppStateContext';
-import { openFileLocation, contentTypeToFolderName } from '../Utils/FileUtils';
+import { contentTypeToFolderName } from '../Utils/FileUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -28,7 +28,6 @@ import {
   RotateCcw,
   RotateCw,
   Upload,
-  ArrowLeft,
   SkipBack,
   SkipForward,
   Skull,
@@ -38,6 +37,7 @@ import {
   ZoomOut,
   Headphones,
   ChevronDown,
+  Camera,
 } from 'lucide-react';
 import { Volume1, Volume2, VolumeX, Maximize, Minimize, Copy, Check } from 'lucide';
 import { MorphIcon } from 'morphicons/react';
@@ -49,6 +49,7 @@ import { useAudioTracks } from '../Hooks/useAudioTracks';
 import { useNativeElementAudio } from '../Hooks/useNativeElementAudio';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../Components/Button';
+import MediaInfoBar from '../Components/MediaInfoBar';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import HevcExtensionWarning from '../Components/HevcExtensionWarning';
 import WebcamOverlay from '../Components/WebcamOverlay';
@@ -132,60 +133,6 @@ function getIconMapping(igdbId?: number): Record<BookmarkType, LucideIcon> {
     return { ...DEFAULT_ICON_MAPPING, ...GAME_ICON_OVERRIDES[igdbId] };
   }
   return DEFAULT_ICON_MAPPING;
-}
-
-function TopInfoBar({ video }: { video: Content }) {
-  const { setSelectedVideo } = useSelectedVideo();
-
-  const created = new Date(video.createdAt);
-  const isValidDate = !isNaN(created.getTime());
-  const locale = Intl.DateTimeFormat().resolvedOptions().locale?.toLowerCase() || '';
-  const isUS = locale.includes('-us');
-  const createdDateStr = !isValidDate
-    ? video.createdAt
-    : isUS
-      ? created.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
-      : `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
-
-  const createdTimeStr = !isValidDate
-    ? ''
-    : created.toLocaleTimeString(isUS ? 'en-US' : undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: isUS,
-      });
-
-  return (
-    <div className="flex items-center gap-2 px-2 py-1 mb-2 text-xs leading-tight text-gray-300 border rounded-lg shrink-0 bg-base-300 border-base-400">
-      <Button
-        variant="ghost"
-        size="xs"
-        className="h-6 min-h-0 px-1"
-        onClick={() => setSelectedVideo(null)}
-        aria-label="Back"
-      >
-        <ArrowLeft className="w-4 h-4" />
-      </Button>
-      <div className="flex items-center gap-2 overflow-hidden">
-        <span className="whitespace-nowrap">
-          Created: {createdDateStr}
-          {createdTimeStr ? ` ${createdTimeStr}` : ''}
-        </span>
-        <span>•</span>
-        <span className="whitespace-nowrap">Size: {video.fileSize}</span>
-        <span>•</span>
-        <span className="flex items-center gap-1 min-w-0">
-          <span className="whitespace-nowrap">Location:</span>
-          <a
-            className="text-gray-300 cursor-pointer hover:underline hover:text-gray-200 truncate"
-            onClick={() => openFileLocation(video.filePath)}
-          >
-            {video.filePath}
-          </a>
-        </span>
-      </div>
-    </div>
-  );
 }
 
 // Fetches a video thumbnail from the backend for a specific timestamp
@@ -449,6 +396,15 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Container state
   const [containerWidth, setContainerWidth] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [screenshotStatus, setScreenshotStatus] = useState<'saving' | 'saved' | 'error' | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (screenshotStatus !== 'saved' && screenshotStatus !== 'error') return;
+    const timeout = window.setTimeout(() => setScreenshotStatus(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [screenshotStatus]);
   const resumeAfterScrubRef = useRef(false);
   const scrubCandidateRef = useRef<number | null>(null);
   const [showNoSegmentsIndicator, setShowNoSegmentsIndicator] = useState(false);
@@ -1016,7 +972,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       () => {
         controlsHideTimeoutRef.current = null;
         pointerSettledRef.current = false;
-        setControlsVisible(false);
+        if (!videoRef.current?.paused) setControlsVisible(false);
       },
       isMenuOpenRef.current ? 1500 : 250,
     );
@@ -1267,7 +1223,8 @@ export default function VideoComponent({ video }: { video: Content }) {
   }, [controlsVisible, isFullscreen]);
 
   useEffect(() => {
-    if (isPlaying && controlsVisibleRef.current) scheduleControlsHide();
+    if (!isPlaying) showControlsTemporarily();
+    else if (controlsVisibleRef.current) scheduleControlsHide();
   }, [isPlaying]);
 
   useEffect(() => {
@@ -1397,23 +1354,50 @@ export default function VideoComponent({ video }: { video: Content }) {
     return { majorTicks, minorTicks };
   }, [duration, pixelsPerSecond]);
 
-  // Grab the frame currently shown in the <video> as an instant thumbnail.
-  // Returns undefined if the frame isn't ready or the canvas would be tainted.
-  const captureCurrentFrame = (): string | undefined => {
+  const drawCurrentFrame = (width?: number) => {
     const v = videoRef.current;
-    if (!v || !v.videoWidth || !v.videoHeight || v.readyState < 2) return undefined;
+    if (!v || !v.videoWidth || !v.videoHeight || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA)
+      return;
+
+    const scale = Math.min(1, (width ?? v.videoWidth) / v.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(v.videoWidth * scale);
+    canvas.height = Math.round(v.videoHeight * scale);
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(v, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  };
+
+  // Grab a small copy of the current frame as an instant thumbnail.
+  const captureCurrentFrame = (): string | undefined => {
     try {
-      const targetWidth = 480;
-      const scale = Math.min(1, targetWidth / v.videoWidth);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(v.videoWidth * scale);
-      canvas.height = Math.round(v.videoHeight * scale);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return undefined;
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-      return canvas.toDataURL('image/jpeg', 0.7);
+      return drawCurrentFrame(480)?.toDataURL('image/jpeg', 0.7);
     } catch {
       return undefined;
+    }
+  };
+
+  const saveFrameAsScreenshot = async () => {
+    const v = videoRef.current;
+    if (!v?.paused || v.seeking || screenshotStatus === 'saving') return;
+
+    setScreenshotStatus('saving');
+    try {
+      const canvas = drawCurrentFrame();
+      if (!canvas) throw new Error('No video frame available');
+      const image = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/png'),
+      );
+      if (!image) throw new Error('Could not create PNG');
+
+      const url = 'http://localhost:2222/api/screenshots?game=' + encodeURIComponent(video.game);
+      const response = await fetch(url, { method: 'POST', body: image });
+      if (!response.ok) throw new Error(`Screenshot save failed (${response.status})`);
+      setScreenshotStatus('saved');
+    } catch (error) {
+      console.error('Could not save screenshot:', error);
+      setScreenshotStatus('error');
     }
   };
 
@@ -2254,7 +2238,12 @@ export default function VideoComponent({ video }: { video: Content }) {
     <DndProvider backend={HTML5Backend}>
       <div className="flex w-full h-full overflow-hidden bg-base-200" ref={containerRef}>
         <div className="flex flex-col flex-1 w-full h-full p-4 pb-3 overflow-hidden lg:w-3/4">
-          <TopInfoBar video={video} />
+          <MediaInfoBar
+            createdAt={video.createdAt}
+            fileSize={video.fileSize}
+            filePath={video.filePath}
+            onBack={() => setSelectedVideo(null)}
+          />
           <div className="flex justify-center w-full mb-px aspect-video shrink min-h-0">
             <div
               className={`${isFullscreen ? 'fixed inset-0 z-50 w-screen h-screen overflow-hidden bg-black' : 'relative h-full max-w-full aspect-video overflow-hidden rounded-lg'}`}
@@ -2278,7 +2267,6 @@ export default function VideoComponent({ video }: { video: Content }) {
                   onLoadedMetadata={(e) => setVideoUndecodable(e.currentTarget.videoWidth === 0)}
                   onPlay={(e) => videoUndecodable && e.currentTarget.pause()}
                   onClick={onVideoClick}
-                  onDoubleClick={toggleFullscreen}
                   onPointerDown={onVideoPointerDown}
                   onPointerMove={onVideoPointerMove}
                   onPointerUp={onVideoPointerUp}
@@ -2422,6 +2410,32 @@ export default function VideoComponent({ video }: { video: Content }) {
                   </div>
 
                   <div className="relative flex items-center gap-1">
+                    <button
+                      type="button"
+                      className={PLAYER_BUTTON_CLASS}
+                      aria-label="Save Frame as Screenshot"
+                      title="Save Frame as Screenshot"
+                      disabled={isPlaying || videoUndecodable || screenshotStatus === 'saving'}
+                      onClick={saveFrameAsScreenshot}
+                    >
+                      {screenshotStatus === 'saved' ? (
+                        <MorphIcon icon={Check} size={19} />
+                      ) : (
+                        <Camera size={19} />
+                      )}
+                    </button>
+                    {screenshotStatus && (
+                      <div
+                        role="status"
+                        className="pointer-events-none absolute right-0 bottom-full mb-2 whitespace-nowrap rounded-md bg-black/85 px-2 py-1 text-sm text-white"
+                      >
+                        {screenshotStatus === 'saving'
+                          ? 'Saving screenshot…'
+                          : screenshotStatus === 'saved'
+                            ? 'Screenshot saved'
+                            : 'Could not save screenshot'}
+                      </div>
+                    )}
                     {isFullscreen &&
                       settings.showBookmarksInFullscreen &&
                       availableBookmarkTypes.length > 0 && (
