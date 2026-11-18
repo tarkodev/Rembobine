@@ -403,7 +403,10 @@ namespace Segra.Backend.Windows.Input
 
                 case HotkeyAction.TakeScreenshot:
                     if (recording?.Pid != null)
-                        _ = Task.Run(() => OBSService.TakeScreenshotAsync(recording));
+                    {
+                        DateTime triggeredAt = DateTime.Now;
+                        _ = Task.Run(() => OBSService.TakeScreenshotAsync(recording, triggeredAt));
+                    }
                     break;
             }
         }

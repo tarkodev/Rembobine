@@ -5,6 +5,7 @@ type ScrollPositions = {
   clips: number;
   highlights: number;
   replayBuffer: number;
+  screenshots: number;
   settings: number;
 };
 
@@ -21,6 +22,7 @@ export function ScrollProvider({ children }: { children: React.ReactNode }) {
     clips: 0,
     highlights: 0,
     replayBuffer: 0,
+    screenshots: 0,
     settings: 0,
   });
 

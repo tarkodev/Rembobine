@@ -215,6 +215,24 @@ namespace Segra.Backend.App
                                 });
                             }
                             break;
+                        case "RenameScreenshot":
+                            if (root.TryGetProperty("Parameters", out var renameScreenshotParams) &&
+                                renameScreenshotParams.TryGetProperty("FilePath", out var renameScreenshotFile) &&
+                                renameScreenshotFile.GetString() is string renamedScreenshotPath &&
+                                renameScreenshotParams.TryGetProperty("Title", out var screenshotTitle) &&
+                                screenshotTitle.GetString() is string renamedScreenshotTitle)
+                            {
+                                try
+                                {
+                                    await Task.Run(() => ScreenshotService.Rename(renamedScreenshotPath, renamedScreenshotTitle));
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Warning(ex, "Failed to rename screenshot");
+                                    await ShowModal("Could not rename screenshot", "Check that the screenshot and its folder are accessible and try again.", "error");
+                                }
+                            }
+                            break;
                         case "DeleteMultipleContent":
                             root.TryGetProperty("Parameters", out JsonElement deleteMultipleContentParameterElement);
                             _ = Task.Run(() => HandleDeleteMultipleContent(deleteMultipleContentParameterElement));
@@ -490,11 +508,16 @@ namespace Segra.Backend.App
 
                 if (content != null && !string.IsNullOrEmpty(content.FilePath))
                 {
-                    await ContentService.DeleteContent(content.FilePath, content.Type, content.Id);
+                    if (!await ContentService.DeleteContent(content.FilePath, content.Type, content.Id))
+                    {
+                        await SendFrontendMessage("DeleteContentFailed", new { id });
+                        await ShowModal("Could not delete video", "Check that the file is writable and close any other app using it, then try again.", "error");
+                    }
                 }
                 else
                 {
                     Log.Warning($"Content not found in state for deletion: {id}");
+                    await SendStateToFrontend("Content already removed");
                 }
             }
             else
@@ -998,7 +1021,7 @@ namespace Segra.Backend.App
                     Id = $"live-{Guid.NewGuid()}",
                     Type = Content.ContentType.Session,
                     Game = recording!.Game,
-                    Bookmarks = recording.Bookmarks.ToList(),
+                    Bookmarks = recording.GetBookmarks(),
                     Matches = recording.GetMatches() is { Count: > 0 } matches ? matches : null,
                     FileName = Path.GetFileNameWithoutExtension(source),
                     FilePath = source,

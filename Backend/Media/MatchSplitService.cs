@@ -26,6 +26,20 @@ namespace Segra.Backend.Media
             public TimeSpan Origin { get; set; }
 
             public bool Contains(TimeSpan time) => time >= Start && time <= End;
+
+            public Bookmark? MapBookmark(Bookmark bookmark)
+            {
+                if (bookmark.Type != BookmarkType.ClipSaved || bookmark.ClipStart is not TimeSpan clipStart)
+                    return Contains(bookmark.Time) ? bookmark.AtTime(Max(TimeSpan.Zero, bookmark.Time - Origin)) : null;
+
+                var start = Max(clipStart, Origin);
+                var end = Min(bookmark.Time, End);
+                if (end <= start) return null;
+                var mapped = bookmark.AtTime(end - Origin);
+                mapped.ClipStart = start - Origin;
+                mapped.ClipOffset += (start - clipStart).TotalSeconds;
+                return mapped;
+            }
         }
 
         public sealed record SplitSession(string Id, List<Bookmark> Bookmarks);
@@ -143,8 +157,8 @@ namespace Segra.Backend.Media
             foreach (var part in parts)
             {
                 var partBookmarks = bookmarks
-                    .Where(b => part.Contains(b.Time))
-                    .Select(b => new Bookmark { Type = b.Type, Subtype = b.Subtype, Time = Max(TimeSpan.Zero, b.Time - part.Origin) })
+                    .Select(part.MapBookmark)
+                    .OfType<Bookmark>()
                     .ToList();
                 GameMatch partMatch = part.Match.Shifted(-part.Origin);
 

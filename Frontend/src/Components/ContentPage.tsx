@@ -66,7 +66,11 @@ export default function ContentPage({
     () => state.content.filter((video) => video.type === contentType),
     [state.content, contentType],
   );
-  const { games: gameSettings, airplaneMode } = useSettings();
+  const { games: gameSettings, airplaneMode, showImportInClipsAndHighlights } = useSettings();
+  const showImport =
+    sectionId === 'sessions' ||
+    sectionId === 'replayBuffer' ||
+    (showImportInClipsAndHighlights && (sectionId === 'clips' || sectionId === 'highlights'));
   const [selectedGame, setSelectedGame] = useState<string>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(`${sectionId}-filters`) ?? 'null');
@@ -579,7 +583,7 @@ export default function ContentPage({
           <h1 className="text-[1.75rem] font-bold">{title}</h1>
         </div>
         <div className="flex items-center gap-2">
-          {(sectionId === 'sessions' || sectionId === 'replayBuffer') && (
+          {showImport && (
             <Button
               variant="primary"
               size="sm"

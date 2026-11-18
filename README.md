@@ -10,6 +10,16 @@ focused on gameplay screenshots and more control over recording and playback.
 - [x] Add **Save Frame as Screenshot** to the paused video player. Both capture methods save to the same gallery
   and play a shutter sound at the configured **Sound Effects Volume**.
 - [x] Add image import, game filters, sorting, and a dedicated screenshot viewer with navigation, zoom, and fullscreen.
+- [x] Add **Show Import in Clips and Highlights** under **Settings → Preferences → Interface**. It is off by default.
+  When enabled, the **Import** button on each page adds MP4 files to that library.
+- [x] Add **Replay Saved** and **Screenshot Saved** bookmarks to the current **Full Session** after each successful
+  save. The bookmark menu opens the media, and **Back** returns to the same playback position in the session.
+- [x] Add **Open Full Session** next to **Copy** in the replay player and screenshot viewer. It opens the session
+  at the saved replay or screenshot bookmark. **Back** returns to the replay or screenshot. The button is disabled
+  when there is no linked session in the library.
+- [x] Add a **Clip Saved** bookmark at the end of each exported segment. **Open Clip** plays that
+  excerpt from its start in the finished clip. In the clip player, **Open Full Session** opens the source session
+  for the current excerpt when a link is available.
 - [x] Add **Recording Start Sound** under **Settings → Preferences → App**, below **Sound Effects Volume**.
   **Off** mutes the start beep. **Manual Only** (default) plays it when you start a recording yourself.
   **Manual & Automatic** also plays it when Segrabi starts a recording automatically. Saving a replay

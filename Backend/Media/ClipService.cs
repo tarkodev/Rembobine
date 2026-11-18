@@ -25,6 +25,7 @@ namespace Segra.Backend.Media
         public static async Task CreateClips(List<Segment> segments, bool createSeparateClips = false, bool copyMatchingVideo = false)
         {
             using var work = BackgroundWork.Begin();
+            using var bookmarks = new ClipBookmarks();
             int id = Guid.NewGuid().GetHashCode();
             List<string> tempClipFiles = new List<string>();
             List<Segment> extractedSegments = new List<Segment>();
@@ -53,6 +54,10 @@ namespace Segra.Backend.Media
                     await MessageService.SendFrontendMessage("ClipProgress", new { id, progress = -1, segments, error = "Invalid clip duration" });
                     return;
                 }
+
+                foreach (var segment in segments)
+                    bookmarks.Track(segment);
+                var completedClips = new List<(string Id, List<Segment> Segments)>();
 
                 // Use game from first segment for the output folder
                 var firstSegment = segments.FirstOrDefault();
@@ -185,6 +190,8 @@ namespace Segra.Backend.Media
                             ? extractedSegmentTrackTypes[i]
                             : null;
                         string? segmentClipId = await ContentService.CreateMetadataFile(segmentOutputFilePath, Content.ContentType.Clip, segment.Game ?? "Unknown", null, segment.Title, igdbId: segment.IgdbId, audioTrackNames: segmentAudioTrackNames, audioTrackTypes: segmentAudioTrackTypes, gameExePath: GetSourceGameExePath(segment));
+                        if (segmentClipId != null)
+                            completedClips.Add((segmentClipId, [segment]));
                         await ContentService.CreateThumbnail(segmentOutputFilePath, Content.ContentType.Clip, segmentClipId);
                         await ContentService.CreateWaveformFile(segmentOutputFilePath, Content.ContentType.Clip, segmentClipId);
                     }
@@ -265,11 +272,18 @@ namespace Segra.Backend.Media
                 if (!createSeparateClips)
                 {
                     string? clipId = await ContentService.CreateMetadataFile(outputFilePath!, Content.ContentType.Clip, firstSegment?.Game!, null, firstSegment?.Title, igdbId: firstSegment?.IgdbId, audioTrackNames: unionAudioLayout, audioTrackTypes: unionAudioTrackTypes, gameExePath: firstSegment != null ? GetSourceGameExePath(firstSegment) : null);
+                    if (clipId != null)
+                        completedClips.Add((clipId, extractedSegments));
                     await ContentService.CreateThumbnail(outputFilePath!, Content.ContentType.Clip, clipId);
                     await ContentService.CreateWaveformFile(outputFilePath!, Content.ContentType.Clip, clipId);
                 }
 
                 _ = MessageService.SendFrontendMessage("ClipProgress", new { id, progress = 99, segments });
+
+                // The batch is complete. A later notification failure must not remove linked clips.
+                outputFilePaths.Clear();
+                outputFilePath = null;
+                await bookmarks.SaveAsync(completedClips);
 
                 // Load silently then await the state send before progress=100 removes the loading card,
                 // so the clip is on screen first (avoids a skeleton-removed-before-content flicker).
@@ -422,7 +436,7 @@ namespace Segra.Backend.Media
                 TimeSpan offset = TimeSpan.Zero;
                 foreach (var session in sessions)
                 {
-                    bookmarks.AddRange(session.Bookmarks.Select(b => new Bookmark { Type = b.Type, Subtype = b.Subtype, Time = b.Time + offset }));
+                    bookmarks.AddRange(session.Bookmarks.Select(b => b.AtTime(b.Time + offset)));
                     matches.AddRange((session.Matches ?? []).Select(m => m.Shifted(offset)));
                     offset += session.Duration;
                 }

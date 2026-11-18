@@ -35,6 +35,7 @@ export default function PreferencesSection({ settings, updateSettings }: Prefere
       | 'confirmBeforeDeleting'
       | 'showAudioWaveformInTimeline'
       | 'showClipToolsOnClips'
+      | 'showImportInClipsAndHighlights'
       | 'showVideoNavigation'
       | 'showBookmarksInFullscreen';
     label: React.ReactNode;
@@ -83,6 +84,11 @@ export default function PreferencesSection({ settings, updateSettings }: Prefere
       label: 'Show Clip Tools on Clips and Highlights',
       description:
         'Shows the Create Clip and Add Segment buttons when watching a clip or highlight.',
+    },
+    {
+      key: 'showImportInClipsAndHighlights',
+      label: 'Show Import in Clips and Highlights',
+      description: 'Shows an Import button on both pages for adding MP4 files to your library.',
     },
     {
       key: 'showVideoNavigation',

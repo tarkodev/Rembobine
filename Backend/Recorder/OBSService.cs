@@ -238,16 +238,18 @@ namespace Segra.Backend.Recorder
         // Saves with immediate feedback (sound + the app's shockwave); "ReplayBufferSaved" follows once OBS has written the file.
         public static void SaveReplayWithFeedback()
         {
+            var bookmark = AppState.Instance.Recording?.BeginLinkedBookmark(BookmarkType.ReplaySaved, DateTime.Now);
             _ = SendFrontendMessage("ReplayBufferSaveStarted", new { });
-            _ = Task.Run(SaveReplayBuffer);
+            _ = Task.Run(() => SaveReplayBuffer(bookmark));
             _ = Task.Run(() => PlatformServices.Sound.Play(Properties.Resources.bookmark, Settings.Instance.SoundEffectsVolume));
         }
 
-        internal static async Task TakeScreenshotAsync(Recording recording)
+        internal static async Task TakeScreenshotAsync(Recording recording, DateTime triggeredAt)
         {
             if (recording.Pid is not int pid || Interlocked.Exchange(ref _screenshotInProgress, 1) != 0)
                 return;
 
+            Recording.PendingMediaBookmark? bookmark = null;
             try
             {
                 if (!GameDetectionService.IsProcessRunning(pid) || !await _recorderLock.WaitAsync(0))
@@ -261,13 +263,15 @@ namespace Segra.Backend.Recorder
                         return;
 
                     frame = await ScreenshotService.CaptureOutputFrameAsync(_currentOutputWidth, _currentOutputHeight, _isHdrRecording);
+                    bookmark = recording.BeginLinkedBookmark(BookmarkType.ScreenshotSaved, triggeredAt);
                 }
                 finally
                 {
                     _recorderLock.Release();
                 }
 
-                await ScreenshotService.SaveOutputFrameAsync(frame, recording.Game);
+                string fileName = await ScreenshotService.SaveOutputFrameAsync(frame, recording.Game);
+                bookmark?.Complete(fileName);
             }
             catch (Exception ex)
             {
@@ -276,12 +280,14 @@ namespace Segra.Backend.Recorder
             }
             finally
             {
+                bookmark?.Dispose();
                 Volatile.Write(ref _screenshotInProgress, 0);
             }
         }
 
-        public static async Task<bool> SaveReplayBuffer()
+        private static async Task<bool> SaveReplayBuffer(Recording.PendingMediaBookmark? bookmark)
         {
+            using var pendingBookmark = bookmark;
             // One save at a time: OBS defers a save requested while a previous one is still
             // muxing, and its 'saved' signal carries no identity, so correlation is only sound
             // with a single save in flight. Concurrent requests queue here and run in order.
@@ -295,6 +301,9 @@ namespace Segra.Backend.Recorder
                 }
 
                 var recording = AppState.Instance.Recording ?? _alwaysOnBuffer;
+                if (bookmark != null && !ReferenceEquals(bookmark.Recording, recording))
+                    return false;
+
                 string? exePath = recording?.ExePath;
                 var request = new ReplaySaveRequest
                 {
@@ -355,6 +364,7 @@ namespace Segra.Backend.Recorder
 
                 // Create metadata for the buffer recording
                 string? bufferId = await ContentService.CreateMetadataFile(savedPath, Content.ContentType.Buffer, request.Game, igdbId: request.IgdbId, audioTrackNames: request.AudioTrackNames, audioTrackTypes: request.AudioTrackTypes, gameExePath: request.ExePath, webcam: webcam);
+                bookmark?.Complete(bufferId);
                 if (bufferId == null)
                     ContentService.DeleteWebcamFile(webcam?.FilePath);
                 await ContentService.CreateThumbnail(savedPath, Content.ContentType.Buffer, bufferId);
@@ -399,6 +409,7 @@ namespace Segra.Backend.Recorder
                 DateTime startedAt = endedAt - duration;
 
                 List<Bookmark> InReplay(IEnumerable<Bookmark> bookmarks) => bookmarks
+                    .Where(b => b.Type is not (BookmarkType.ReplaySaved or BookmarkType.ScreenshotSaved or BookmarkType.ClipSaved))
                     .Select(b => new Bookmark { Id = b.Id, Type = b.Type, Subtype = b.Subtype, Time = recording.StartTime + b.Time - startedAt })
                     .Where(b => b.Time >= TimeSpan.Zero && b.Time <= duration)
                     .ToList();
@@ -2493,9 +2504,11 @@ namespace Segra.Backend.Recorder
                 if (session != null)
                 {
                     string filePath = session.FilePath!;
+                    await session.FinishLinkedBookmarksAsync();
+                    var bookmarks = session.GetBookmarks();
 
                     // Check if we should discard the session due to no manual bookmarks
-                    bool hasManualBookmarks = session.Bookmarks.Any(b => b.Type == BookmarkType.Manual);
+                    bool hasManualBookmarks = bookmarks.Any(b => b.Type == BookmarkType.Manual);
                     if (discardSession && !hasManualBookmarks)
                     {
                         Log.Information("Discarding session recording without manual bookmarks");
@@ -2519,11 +2532,11 @@ namespace Segra.Backend.Recorder
                         }
                         else
                         {
-                            string? sessionContentId = await ContentService.CreateMetadataFile(filePath, Content.ContentType.Session, session.Game, session.Bookmarks, igdbId: igdbId, audioTrackNames: session.AudioTrackNames, audioTrackTypes: session.AudioTrackTypes, gameExePath: session.ExePath, webcam: webcam, matches: session.GetMatches());
+                            string? sessionContentId = await ContentService.CreateMetadataFile(filePath, Content.ContentType.Session, session.Game, bookmarks, igdbId: igdbId, audioTrackNames: session.AudioTrackNames, audioTrackTypes: session.AudioTrackTypes, gameExePath: session.ExePath, webcam: webcam, matches: session.GetMatches());
                             if (sessionContentId == null)
                                 ContentService.DeleteWebcamFile(webcam?.FilePath);
                             else
-                                savedSessions.Add((sessionContentId, session.Bookmarks));
+                                savedSessions.Add((sessionContentId, bookmarks));
                             await ContentService.CreateThumbnail(filePath, Content.ContentType.Session, sessionContentId);
                             // Decoding a long session's audio takes seconds, so it doesn't hold up the finishing state
                             var waveformWork = BackgroundWork.Begin();

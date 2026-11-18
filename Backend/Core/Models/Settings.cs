@@ -912,6 +912,9 @@ namespace Segra.Backend.Core.Models
         [JsonPropertyName("showClipToolsOnClips")]
         public bool ShowClipToolsOnClips { get; set; } = false;
 
+        [JsonPropertyName("showImportInClipsAndHighlights")]
+        public bool ShowImportInClipsAndHighlights { get; set; } = false;
+
         // Only set by editing settings.json: enables browser shortcuts such as F12 (DevTools) and F5 (reload)
         [JsonPropertyName("enableFrontendDebugShortcuts")]
         public bool EnableFrontendDebugShortcuts { get; set; } = false;
@@ -1259,6 +1262,8 @@ namespace Segra.Backend.Core.Models
     internal class Recording
     {
         private readonly object _bookmarksLock = new();
+        private readonly HashSet<Task> _pendingLinkedBookmarks = [];
+        private bool _linkedBookmarksClosed;
         private readonly object _matchesLock = new();
         private readonly List<GameMatch> _matches = [];
 
@@ -1335,6 +1340,66 @@ namespace Segra.Backend.Core.Models
             }
         }
 
+        internal PendingMediaBookmark? BeginLinkedBookmark(BookmarkType type, DateTime triggeredAt)
+        {
+            TimeSpan time = triggeredAt - StartTime;
+            return BeginLinkedBookmark(new Bookmark { Type = type, Time = time < TimeSpan.Zero ? TimeSpan.Zero : time });
+        }
+
+        internal PendingMediaBookmark? BeginLinkedBookmark(Bookmark bookmark)
+        {
+            lock (_bookmarksLock)
+            {
+                if (FilePath == null || EndTime != null || _linkedBookmarksClosed)
+                    return null;
+
+                var pending = new PendingMediaBookmark(this, bookmark);
+                _pendingLinkedBookmarks.Add(pending.Finished);
+                return pending;
+            }
+        }
+
+        internal Task FinishLinkedBookmarksAsync()
+        {
+            lock (_bookmarksLock)
+            {
+                _linkedBookmarksClosed = true;
+                return Task.WhenAll(_pendingLinkedBookmarks);
+            }
+        }
+
+        internal sealed class PendingMediaBookmark(Recording recording, Bookmark bookmark) : IDisposable
+        {
+            private readonly TaskCompletionSource _finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private int _completed;
+
+            internal Recording Recording => recording;
+            internal Task Finished => _finished.Task;
+
+            internal void Complete(string? mediaId)
+            {
+                if (Interlocked.Exchange(ref _completed, 1) != 0)
+                    return;
+
+                try
+                {
+                    if (mediaId != null)
+                    {
+                        bookmark.MediaId = mediaId;
+                        recording.AddBookmark(bookmark);
+                    }
+                }
+                finally
+                {
+                    lock (recording._bookmarksLock)
+                        recording._pendingLinkedBookmarks.Remove(Finished);
+                    _finished.TrySetResult();
+                }
+            }
+
+            public void Dispose() => Complete(null);
+        }
+
         public void AddMatch(GameMatch match)
         {
             lock (_matchesLock)
@@ -1400,6 +1465,12 @@ namespace Segra.Backend.Core.Models
         public string Game { get; set; } = string.Empty;
         public List<Bookmark> Bookmarks { get; set; } = new List<Bookmark>();
         public List<GameMatch>? Matches { get; set; }
+
+        public Bookmark[] GetBookmarks()
+        {
+            lock (_bookmarksLock)
+                return Bookmarks?.ToArray() ?? [];
+        }
 
         public void AddBookmark(Bookmark bookmark)
         {

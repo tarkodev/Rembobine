@@ -663,14 +663,15 @@ namespace Segra.Backend.Media
             }
         }
 
-        public static async Task DeleteContent(string filePath, Content.ContentType type, string? id, bool sendToFrontend = true, bool reloadState = true, bool keepWebcam = false)
+        public static async Task<bool> DeleteContent(string filePath, Content.ContentType type, string? id, bool sendToFrontend = true, bool reloadState = true, bool keepWebcam = false)
         {
+            bool videoRemoved = false;
             try
             {
                 if (string.IsNullOrWhiteSpace(filePath))
                 {
                     Log.Warning("DeleteClip called with an invalid file path.");
-                    return;
+                    return false;
                 }
 
                 string normalizedFilePath = PathUtils.Normalize(Path.GetFullPath(filePath));
@@ -724,10 +725,11 @@ namespace Segra.Backend.Media
                     Log.Warning($"Video file not found (already deleted?): {normalizedFilePath}");
                 }
 
+                videoRemoved = true;
                 if (string.IsNullOrEmpty(id))
                 {
                     Log.Warning($"No content id for {normalizedFilePath}, leaving metadata, thumbnail and waveform in place");
-                    return;
+                    return videoRemoved;
                 }
 
                 string metadataFilePath = FolderNames.GetMetadataFilePath(type, id);
@@ -792,6 +794,7 @@ namespace Segra.Backend.Media
                     await SettingsService.LoadContentFromFolderIntoState(sendToFrontend);
                 }
             }
+            return videoRemoved;
         }
 
         public static void DeleteWebcamFile(string? path)
@@ -817,25 +820,20 @@ namespace Segra.Backend.Media
         {
             try
             {
-                var fileInfo = new FileInfo(filePath);
-                long fileSizeInKb = fileInfo.Length / 1024;
-                double fileSizeInMb = fileInfo.Length / (1024.0 * 1024.0);
-
-                if (fileSizeInMb > 1000)
-                {
-                    double fileSizeInGb = fileSizeInMb / 1024.0;
-                    return ($"{fileSizeInGb:F2} GB", fileSizeInKb);
-                }
-                else
-                {
-                    return ($"{fileSizeInMb:F2} MB", fileSizeInKb);
-                }
+                long bytes = new FileInfo(filePath).Length;
+                return (FormatFileSize(bytes), bytes / 1024);
             }
             catch (Exception ex)
             {
                 Log.Error($"Error getting file size: {ex.Message}");
                 return ("Unknown", 0);
             }
+        }
+
+        internal static string FormatFileSize(long bytes)
+        {
+            double megabytes = bytes / (1024.0 * 1024.0);
+            return megabytes > 1000 ? $"{megabytes / 1024.0:F2} GB" : $"{megabytes:F2} MB";
         }
 
         /// <summary>
@@ -854,7 +852,7 @@ namespace Segra.Backend.Media
                     return;
 
                 // Metadata written before bookmarks existed can deserialize with a null list
-                var existing = contentItem.Bookmarks ?? [];
+                var existing = contentItem.GetBookmarks();
                 var newBookmarks = bookmarks.Where(b => !existing.Any(e => e.Id == b.Id)).ToList();
                 if (newBookmarks.Count == 0)
                     return;

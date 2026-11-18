@@ -41,6 +41,12 @@ namespace Segra.Backend.Media
                     case "replayBuffer":
                         contentType = Content.ContentType.Buffer;
                         break;
+                    case "clips" when Settings.Instance.ShowImportInClipsAndHighlights:
+                        contentType = Content.ContentType.Clip;
+                        break;
+                    case "highlights" when Settings.Instance.ShowImportInClipsAndHighlights:
+                        contentType = Content.ContentType.Highlight;
+                        break;
                     default:
                         Log.Error($"Invalid sectionId: {sectionId}");
                         await MessageService.ShowModal("Import Error", $"Invalid section ID: {sectionId}", "error");

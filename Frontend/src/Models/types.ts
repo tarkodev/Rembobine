@@ -90,6 +90,7 @@ export interface Screenshot {
   createdAt: string;
   title: string;
   game: string | null;
+  fileSize?: string; // Older cached screenshots only have the size in bytes.
   fileSizeBytes: number;
   isImported: boolean;
 }
@@ -140,6 +141,9 @@ export enum BookmarkType {
   Goal = 'Goal',
   Assist = 'Assist',
   Death = 'Death',
+  ReplaySaved = 'ReplaySaved',
+  ScreenshotSaved = 'ScreenshotSaved',
+  ClipSaved = 'ClipSaved',
 }
 
 export const includeInHighlight = (type: BookmarkType): boolean =>
@@ -168,9 +172,13 @@ export interface Bookmark {
   type: BookmarkType;
   subtype?: BookmarkSubtype;
   time: string;
+  mediaId?: string;
+  clipOffset?: number;
+  clipStart?: string;
 }
 
 export interface Recording {
+  bookmarks?: Bookmark[];
   startTime: Date;
   endTime: Date;
   game: string;
@@ -347,13 +355,11 @@ export const DEFAULT_MENU_ITEMS: MenuItemPreference[] = [
   { id: 'Settings', visible: true },
 ];
 
-const MENU_ITEM_CONTENT_TYPES: Record<MenuItemId, ContentType[]> = {
-  'Full Sessions': ['Session'],
-  'Replay Buffer': ['Buffer'],
-  Clips: ['Clip'],
-  Highlights: ['Highlight'],
-  Screenshots: [],
-  Settings: [],
+export const CONTENT_MENU_ITEMS: Record<ContentType, MenuItemId> = {
+  Session: 'Full Sessions',
+  Buffer: 'Replay Buffer',
+  Clip: 'Clips',
+  Highlight: 'Highlights',
 };
 
 export const menuItemHasContent = (
@@ -362,9 +368,7 @@ export const menuItemHasContent = (
   screenshots: Screenshot[],
 ): boolean => {
   if (id === 'Screenshots') return screenshots.length > 0;
-  const types = MENU_ITEM_CONTENT_TYPES[id];
-  if (!types?.length) return false;
-  return content.some((c) => types.includes(c.type));
+  return id !== 'Settings' && content.some((c) => CONTENT_MENU_ITEMS[c.type] === id);
 };
 
 export interface AppAudioCapture {
@@ -448,6 +452,7 @@ export interface Settings {
   showBookmarksInFullscreen: boolean;
   showVideoNavigation: boolean;
   showClipToolsOnClips: boolean;
+  showImportInClipsAndHighlights: boolean;
   showLiveSessionCard: boolean;
   enableSeparateAudioTracks: boolean; // Advanced: per-source audio tracks
   audioOutputMode: AudioOutputMode;
@@ -567,6 +572,7 @@ export const initialSettings: Settings = {
   showBookmarksInFullscreen: true,
   showVideoNavigation: true,
   showClipToolsOnClips: false,
+  showImportInClipsAndHighlights: false,
   showLiveSessionCard: true,
   enableSeparateAudioTracks: false,
   audioOutputMode: 'All',

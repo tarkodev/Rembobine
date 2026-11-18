@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using ObsKit.NET;
 using ObsKit.NET.Native.Types;
@@ -15,7 +16,10 @@ using Serilog;
 namespace Segra.Backend.Media
 {
     internal sealed record Screenshot(string FileName, string FilePath, DateTime CreatedAt,
-        string Title, string? Game, long FileSizeBytes, bool IsImported);
+        string Title, string? Game, long FileSizeBytes, bool IsImported)
+    {
+        public string FileSize => ContentService.FormatFileSize(FileSizeBytes);
+    }
 
     internal static class ScreenshotService
     {
@@ -30,6 +34,7 @@ namespace Segra.Backend.Media
 
         private static string DirectoryPath => Path.Combine(Settings.Instance.ContentFolder, FolderNames.Screenshots);
         private const string ImportedFolderName = "Imported";
+        private const string TitlesFileName = ".titles.json";
         private static StringComparison PathComparison =>
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -85,7 +90,7 @@ namespace Segra.Backend.Media
                 source.Slice(y * stride, rowBytes).CopyTo(destination.Slice(y * rowBytes, rowBytes));
         }
 
-        internal static Task SaveOutputFrameAsync(OutputFrame frame, string game) =>
+        internal static Task<string> SaveOutputFrameAsync(OutputFrame frame, string game) =>
             SaveAsync(game, path => EncodePngAsync(frame, path));
 
         internal static async Task SavePlayerFrameAsync(Stream png, long length, string? game, CancellationToken cancellationToken)
@@ -110,7 +115,7 @@ namespace Segra.Backend.Media
             });
         }
 
-        private static async Task SaveAsync(string? game, Func<string, Task> writePng)
+        private static async Task<string> SaveAsync(string? game, Func<string, Task> writePng)
         {
             using var work = BackgroundWork.Begin();
             string directory = DirectoryPath;
@@ -126,6 +131,7 @@ namespace Segra.Backend.Media
             Log.Information("Screenshot saved: {FileName}", fileName);
             _ = Task.Run(() => OBSService.PlaySound("screenshot"));
             RefreshAfterFileChange();
+            return fileName;
         }
 
         private static async Task WriteImageAsync(string path, Func<string, Task> writeFile)
@@ -298,8 +304,19 @@ namespace Segra.Backend.Media
                 string directory = DirectoryPath;
                 try
                 {
-                    var screenshots = ReadDirectory(directory, isImported: false)
-                        .Concat(ReadDirectory(Path.Combine(directory, ImportedFolderName), isImported: true))
+                    IReadOnlyDictionary<string, string> titles;
+                    try
+                    {
+                        titles = ReadTitles(directory);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                    {
+                        Log.Warning(ex, "Could not read screenshot titles");
+                        titles = new Dictionary<string, string>();
+                    }
+
+                    var screenshots = ReadDirectory(directory, isImported: false, titles)
+                        .Concat(ReadDirectory(Path.Combine(directory, ImportedFolderName), isImported: true, titles))
                         .OrderByDescending(screenshot => screenshot.CreatedAt)
                         .ThenBy(screenshot => screenshot.FileName, StringComparer.Ordinal)
                         .ToArray();
@@ -312,12 +329,14 @@ namespace Segra.Backend.Media
             }
         }
 
-        private static IEnumerable<Screenshot> ReadDirectory(string directory, bool isImported)
+        private static IEnumerable<Screenshot> ReadDirectory(
+            string directory, bool isImported, IReadOnlyDictionary<string, string> titles)
         {
             var folder = new DirectoryInfo(directory);
             if (!folder.Exists)
                 yield break;
 
+            string prefix = isImported ? $"{ImportedFolderName}/" : "";
             foreach (var file in folder.EnumerateFiles())
             {
                 if (ImageType(file.Name) == null)
@@ -331,6 +350,9 @@ namespace Segra.Backend.Media
                     if (title != "Screenshot")
                         game = title;
                 }
+
+                if (titles.TryGetValue(prefix + file.Name, out string? savedTitle) && !string.IsNullOrWhiteSpace(savedTitle))
+                    title = savedTitle;
 
                 yield return new Screenshot(file.Name, file.FullName, file.LastWriteTimeUtc,
                     title, game, file.Length, isImported);
@@ -349,6 +371,11 @@ namespace Segra.Backend.Media
         internal static string? GetScreenshotContentType(string path)
         {
             string root = Path.GetFullPath(DirectoryPath);
+            return GetScreenshotContentType(path, root);
+        }
+
+        private static string? GetScreenshotContentType(string path, string root)
+        {
             string? folder = Path.GetDirectoryName(Path.GetFullPath(path));
             return string.Equals(folder, root, PathComparison)
                 || string.Equals(folder, Path.Combine(root, ImportedFolderName), PathComparison)
@@ -356,13 +383,79 @@ namespace Segra.Backend.Media
                 : null;
         }
 
+        internal static void Rename(string path, string title)
+        {
+            title = title.Trim();
+            if (title.Length == 0)
+                throw new ArgumentException("The screenshot title cannot be empty.", nameof(title));
+
+            lock (_libraryLock)
+            {
+                string directory = Path.GetFullPath(DirectoryPath);
+                if (!Path.IsPathFullyQualified(path) || GetScreenshotContentType(path, directory) == null || !File.Exists(path))
+                    throw new FileNotFoundException("The screenshot is no longer in the library.", path);
+
+                // Video bookmarks use the original filename as the screenshot ID.
+                var titles = ReadTitles(directory);
+                titles[PathUtils.Normalize(Path.GetRelativePath(directory, path))] = title;
+                WriteTitles(directory, titles);
+                RefreshLibrary();
+            }
+        }
+
         internal static void Delete(string path)
         {
-            if (!Path.IsPathFullyQualified(path) || GetScreenshotContentType(path) == null)
-                return;
+            lock (_libraryLock)
+            {
+                string directory = Path.GetFullPath(DirectoryPath);
+                if (!Path.IsPathFullyQualified(path) || GetScreenshotContentType(path, directory) == null)
+                    return;
 
-            File.Delete(path);
+                File.Delete(path);
+                try
+                {
+                    var titles = ReadTitles(directory);
+                    if (titles.Remove(PathUtils.Normalize(Path.GetRelativePath(directory, path))))
+                        WriteTitles(directory, titles);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    Log.Warning(ex, "Could not remove the title of the deleted screenshot");
+                }
+            }
+
             RefreshAfterFileChange();
+        }
+
+        private static Dictionary<string, string> ReadTitles(string directory)
+        {
+            var titles = new Dictionary<string, string>(StringComparer.FromComparison(PathComparison));
+            string path = Path.Combine(directory, TitlesFileName);
+            if (!File.Exists(path))
+                return titles;
+
+            var savedTitles = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+            if (savedTitles != null)
+                foreach (var (name, title) in savedTitles)
+                    titles[name] = title;
+
+            return titles;
+        }
+
+        private static void WriteTitles(string directory, Dictionary<string, string> titles)
+        {
+            string tempPath = Path.Combine(directory, $".{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllText(tempPath, JsonSerializer.Serialize(titles));
+                File.Move(tempPath, Path.Combine(directory, TitlesFileName), overwrite: true);
+            }
+            catch
+            {
+                try { File.Delete(tempPath); }
+                catch (Exception ex) { Log.Warning(ex, "Could not remove unfinished screenshot titles"); }
+                throw;
+            }
         }
 
         private static void RefreshAfterFileChange()

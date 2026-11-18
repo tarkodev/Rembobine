@@ -721,7 +721,14 @@ namespace Segra.Backend.Media
 
         private static string GetChapterName(Bookmark bookmark)
         {
-            string name = bookmark.Type == BookmarkType.Manual ? "Bookmark" : bookmark.Type.ToString();
+            string name = bookmark.Type switch
+            {
+                BookmarkType.Manual => "Bookmark",
+                BookmarkType.ReplaySaved => "Replay Saved",
+                BookmarkType.ScreenshotSaved => "Screenshot Saved",
+                BookmarkType.ClipSaved => "Clip Saved",
+                _ => bookmark.Type.ToString()
+            };
             return bookmark.Subtype != null ? $"{name} ({bookmark.Subtype})" : name;
         }
 

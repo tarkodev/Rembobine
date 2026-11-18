@@ -191,6 +191,7 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
                 <Button
                   variant="nav"
                   className={`justify-between ${isActive ? 'text-primary' : ''}`}
+                  aria-current={isActive ? 'page' : undefined}
                   onMouseDown={() => onSelectMenu(id)}
                 >
                   <span className="flex items-center gap-2">
@@ -221,6 +222,7 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
                 <Button
                   variant="nav"
                   className={isActive ? 'text-primary' : ''}
+                  aria-current={isActive ? 'page' : undefined}
                   onMouseDown={() => onSelectMenu(id)}
                 >
                   <Icon className="w-5 h-5" />

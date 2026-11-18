@@ -438,6 +438,12 @@ namespace Segra.Backend.Core
                 hasChanges = true;
             }
 
+            if (settings.ShowImportInClipsAndHighlights != updatedSettings.ShowImportInClipsAndHighlights)
+            {
+                settings.ShowImportInClipsAndHighlights = updatedSettings.ShowImportInClipsAndHighlights;
+                hasChanges = true;
+            }
+
             if (settings.ShowLiveSessionCard != updatedSettings.ShowLiveSessionCard)
             {
                 Log.Information($"ShowLiveSessionCard changed from '{settings.ShowLiveSessionCard}' to '{updatedSettings.ShowLiveSessionCard}'");

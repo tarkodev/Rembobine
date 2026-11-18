@@ -1,18 +1,23 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Camera, FileUp, FolderOpen, Trash2 } from 'lucide-react';
+import { Camera, FileUp } from 'lucide-react';
 import Button from '../Components/Button';
 import ContentFilters, { ALL_GAMES, IMPORTED } from '../Components/ContentFilters';
 import type { GameOption, SortOption } from '../Components/ContentFilters';
+import ScreenshotActions from '../Components/ScreenshotActions';
 import ScreenshotViewer from '../Components/ScreenshotViewer';
 import { useAppState } from '../Context/AppStateContext';
+import { useScroll } from '../Context/ScrollContext';
 import { useSettings } from '../Context/SettingsContext';
-import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
-import type { Screenshot } from '../Models/types';
-import { getContentFileUrl, openFileLocation } from '../Utils/FileUtils';
+import { getContentFileUrl } from '../Utils/FileUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 
 const SECTION_ID = 'screenshots';
 const SCREENSHOT_SORTS: SortOption[] = ['newest', 'oldest', 'size', 'game'];
+
+interface ScreenshotsProps {
+  selectedPath: string | null;
+  onSelect: (filePath: string | null) => void;
+}
 
 function readPreference(key: string): unknown {
   try {
@@ -22,11 +27,9 @@ function readPreference(key: string): unknown {
   }
 }
 
-export default function Screenshots() {
+export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps) {
   const { screenshots, gameList } = useAppState();
   const { games: gameSettings, airplaneMode } = useSettings();
-  const confirmDelete = useDeleteConfirmation();
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState(() => {
     const saved = readPreference('filters');
     return typeof saved === 'string' ? saved : ALL_GAMES;
@@ -36,7 +39,7 @@ export default function Screenshots() {
     return SCREENSHOT_SORTS.find((sort) => sort === saved) ?? 'newest';
   });
   const galleryRef = useRef<HTMLDivElement>(null);
-  const galleryScrollTop = useRef(0);
+  const { scrollPositions, setScrollPosition } = useScroll();
 
   const gameOptions = useMemo(() => {
     const byGame = new Map<string, GameOption>();
@@ -102,31 +105,19 @@ export default function Screenshots() {
   const selected = filtered[selectedIndex];
 
   useLayoutEffect(() => {
-    if (!selected && galleryRef.current) galleryRef.current.scrollTop = galleryScrollTop.current;
-  }, [selected]);
-
-  const handleDelete = (screenshot: Screenshot) => {
-    confirmDelete({
-      title: 'Delete screenshot?',
-      description: screenshot.fileName,
-      onConfirm: () => {
-        if (selectedPath === screenshot.filePath) setSelectedPath(null);
-        sendMessageToBackend('DeleteScreenshot', { FilePath: screenshot.filePath });
-      },
-    });
-  };
+    if (!selected && galleryRef.current) galleryRef.current.scrollTop = scrollPositions.screenshots;
+  }, [selected, scrollPositions.screenshots]);
 
   if (selected) {
     return (
       <ScreenshotViewer
         screenshot={selected}
-        previous={filtered[selectedIndex - 1]}
-        next={filtered[selectedIndex + 1]}
-        position={selectedIndex + 1}
-        total={filtered.length}
-        onSelect={setSelectedPath}
-        onBack={() => setSelectedPath(null)}
-        onDelete={handleDelete}
+        navigation={{
+          previous: filtered[selectedIndex - 1],
+          next: filtered[selectedIndex + 1],
+          onSelect,
+        }}
+        onBack={() => onSelect(null)}
       />
     );
   }
@@ -174,57 +165,42 @@ export default function Screenshots() {
           {filtered.map((screenshot) => (
             <article
               key={screenshot.filePath}
-              className="overflow-hidden rounded-lg border border-base-400 bg-base-300"
+              className="card card-compact w-full bg-base-300 text-gray-300"
             >
-              <button
-                type="button"
-                className="block aspect-video w-full cursor-pointer bg-black/30"
-                aria-label={`View screenshot ${screenshot.title}`}
-                onClick={() => {
-                  galleryScrollTop.current = galleryRef.current?.scrollTop ?? 0;
-                  setSelectedPath(screenshot.filePath);
-                }}
-              >
+              <figure className="relative aspect-video border border-b-0 border-[#49515b] bg-base-200">
                 <img
-                  className="h-full w-full object-contain"
+                  className="absolute inset-0 h-full w-full select-none object-contain"
                   src={getContentFileUrl(screenshot.filePath)}
                   alt=""
+                  draggable={false}
                   loading="lazy"
                   decoding="async"
                 />
-              </button>
-              <div className="flex items-center gap-1 p-2">
-                <div className="min-w-0 flex-1 pl-1">
-                  <h2 className="truncate font-medium" title={screenshot.fileName}>
+              </figure>
+              <button
+                type="button"
+                className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:outline-2 focus-visible:outline-primary"
+                aria-label={`View screenshot ${screenshot.title}`}
+                onClick={() => {
+                  setScrollPosition('screenshots', galleryRef.current?.scrollTop ?? 0);
+                  onSelect(screenshot.filePath);
+                }}
+              />
+              <div className="card-body gap-1 rounded-b-[inherit] border border-t-0 border-[#49515b] pt-2">
+                <div className="flex items-center justify-between gap-1">
+                  <h2 className="card-title min-w-0 truncate !block" title={screenshot.fileName}>
                     {screenshot.title}
                   </h2>
-                  <time className="text-xs text-base-content/65" dateTime={screenshot.createdAt}>
-                    {new Date(screenshot.createdAt).toLocaleString(undefined, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
+                  <div className="relative z-20 shrink-0">
+                    <ScreenshotActions screenshot={screenshot} />
+                  </div>
+                </div>
+                <div className="text-sm text-gray-200">
+                  {screenshot.fileSize && <>{screenshot.fileSize} &bull; </>}
+                  <time dateTime={screenshot.createdAt}>
+                    {new Date(screenshot.createdAt).toLocaleDateString()}
                   </time>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon
-                  aria-label="Open file location"
-                  title="Open file location"
-                  onClick={() => openFileLocation(screenshot.filePath)}
-                >
-                  <FolderOpen size={16} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon
-                  aria-label="Delete screenshot"
-                  title="Delete screenshot"
-                  onClick={() => handleDelete(screenshot)}
-                >
-                  <Trash2 size={16} />
-                </Button>
               </div>
             </article>
           ))}

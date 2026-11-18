@@ -4,7 +4,9 @@ import { sendMessageToBackend } from '../Utils/MessageUtils';
 import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
 import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName } from '../Utils/FileUtils';
+import { timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
+import type { LinkedMedia } from '../Context/SelectedVideoContext';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useSegments } from '../Context/SegmentsContext';
@@ -38,8 +40,9 @@ import {
   Headphones,
   ChevronDown,
   Camera,
+  History,
 } from 'lucide-react';
-import { Volume1, Volume2, VolumeX, Maximize, Minimize, Copy, Check } from 'lucide';
+import { Volume1, Volume2, VolumeX, Maximize, Minimize, Check } from 'lucide';
 import { MorphIcon } from 'morphicons/react';
 import SegmentCard from '../Components/SegmentCard';
 import { useHoverIntent } from '../Hooks/useHoverIntent';
@@ -49,7 +52,11 @@ import { useAudioTracks } from '../Hooks/useAudioTracks';
 import { useNativeElementAudio } from '../Hooks/useNativeElementAudio';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../Components/Button';
+import CopyFileButton from '../Components/CopyFileButton';
+import OpenFullSessionButton from '../Components/OpenFullSessionButton';
+import DeleteVideoButton from '../Components/DeleteVideoButton';
 import MediaInfoBar from '../Components/MediaInfoBar';
+import BookmarkMediaMenu from '../Components/BookmarkMediaMenu';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import HevcExtensionWarning from '../Components/HevcExtensionWarning';
 import WebcamOverlay from '../Components/WebcamOverlay';
@@ -64,13 +71,6 @@ const Crosshair2Dot = React.forwardRef<SVGSVGElement, LucideProps>((props, ref) 
 const SoccerBall = React.forwardRef<SVGSVGElement, LucideProps>((props, ref) => (
   <Icon {...props} ref={ref} iconNode={soccerBall} />
 )) as LucideIcon;
-
-// Converts time string in format "HH:MM:SS.mmm" to seconds
-const timeStringToSeconds = (timeStr: string): number => {
-  const [time, milliseconds] = timeStr.split('.');
-  const [hours, minutes, seconds] = time.split(':').map(Number);
-  return hours * 3600 + minutes * 60 + seconds + (milliseconds ? Number(`0.${milliseconds}`) : 0);
-};
 
 // Render waveform bars onto a canvas for a given pixel range [regionLeft, regionLeft + canvas.width).
 // peaksMax is the loudest absolute peak in the whole clip; bars are scaled against it so
@@ -122,7 +122,21 @@ const DEFAULT_ICON_MAPPING: Record<BookmarkType, LucideIcon> = {
   Goal: SoccerBall,
   Assist: HeartHandshake,
   Death: Skull,
+  ReplaySaved: History,
+  ScreenshotSaved: Camera,
+  ClipSaved: Clapperboard,
 };
+
+const bookmarkMediaNames: Partial<Record<BookmarkType, string>> = {
+  [BookmarkType.ReplaySaved]: 'Replay',
+  [BookmarkType.ScreenshotSaved]: 'Screenshot',
+  [BookmarkType.ClipSaved]: 'Clip',
+};
+
+function bookmarkLabel(type: BookmarkType): string {
+  const media = bookmarkMediaNames[type];
+  return media ? `${media} Saved` : type;
+}
 
 const GAME_ICON_OVERRIDES: Record<number, Partial<Record<BookmarkType, LucideIcon>>> = {
   115: { Kill: Swords }, // League of Legends
@@ -155,7 +169,8 @@ export default function VideoComponent({ video }: { video: Content }) {
   const updateSettings = useSettingsUpdater();
   const { uploads } = useUploads();
   const { openModal, closeModal, isModalOpen } = useModal();
-  const { setSelectedVideo, playlist } = useSelectedVideo();
+  const { setSelectedVideo, playlist, resumePlayback, openLinkedMedia, goBack } =
+    useSelectedVideo();
 
   // Skip items deleted since the list was opened
   const siblings = useMemo(() => {
@@ -395,7 +410,13 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   // Container state
   const [containerWidth, setContainerWidth] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(resumePlayback ? !resumePlayback.paused : true);
+  const playbackRestored = useRef(false);
+  const [bookmarkMenu, setBookmarkMenu] = useState<{
+    bookmark: Bookmark;
+    trigger: HTMLElement;
+  } | null>(null);
+  const closeBookmarkMenu = useCallback(() => setBookmarkMenu(null), []);
   const [screenshotStatus, setScreenshotStatus] = useState<'saving' | 'saved' | 'error' | null>(
     null,
   );
@@ -611,6 +632,11 @@ export default function VideoComponent({ video }: { video: Content }) {
 
       // Space to toggle play/pause globally (unless typing)
       if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isTyping) {
+        if (
+          target instanceof HTMLElement &&
+          target.closest('[data-bookmark-control], [data-player-button]')
+        )
+          return;
         if (e.repeat) return; // avoid rapid toggle on key repeat
         e.preventDefault();
         handlePlayPause();
@@ -1804,14 +1830,8 @@ export default function VideoComponent({ video }: { video: Content }) {
     );
   };
 
-  const [fileCopied, setFileCopied] = useState(false);
+  const [compressedFileCopied, setCompressedFileCopied] = useState(false);
   const [compressCopyProgress, setCompressCopyProgress] = useState<number | null>(null);
-
-  const handleCopyFile = () => {
-    sendMessageToBackend('CopyFileToClipboard', { FilePath: video.filePath });
-    setFileCopied(true);
-    setTimeout(() => setFileCopied(false), 1500);
-  };
 
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const copyMenuRef = useRef<HTMLDivElement>(null);
@@ -1893,8 +1913,8 @@ export default function VideoComponent({ video }: { video: Content }) {
         compressRateRef.current = null;
         setCompressCopyProgress(null);
         if (content.status === 'done') {
-          setFileCopied(true);
-          setTimeout(() => setFileCopied(false), 1500);
+          setCompressedFileCopied(true);
+          setTimeout(() => setCompressedFileCopied(false), 1500);
         }
       }
     };
@@ -1936,15 +1956,11 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   const copyButtons = (
     <div className="join relative z-30">
-      <Button
-        variant="primary"
-        size="sm"
-        className="h-10 hover:text-accent join-item"
-        onClick={handleCopyFile}
-      >
-        <MorphIcon icon={fileCopied ? Check : Copy} size={20} spring="snappy" />
-        <span>Copy</span>
-      </Button>
+      <CopyFileButton
+        filePath={video.filePath}
+        className="join-item"
+        copied={compressedFileCopied}
+      />
       {copySizeOptions.length > 0 && (
         <div
           ref={copyMenuRef}
@@ -2019,6 +2035,20 @@ export default function VideoComponent({ video }: { video: Content }) {
     localStorage.setItem('segra-hidden-bookmark-types', JSON.stringify(hidden));
   }, [selectedBookmarkTypes]);
 
+  const timelineBookmarks = useMemo(() => {
+    const recording = appState.recording;
+    if (!video.id.startsWith('live-') || recording?.filePath !== video.filePath)
+      return video.bookmarks;
+    const ids = new Set(video.bookmarks.map((b) => b.id));
+    const added = recording?.bookmarks?.filter(
+      (b) =>
+        b.type === BookmarkType.ClipSaved &&
+        !ids.has(b.id) &&
+        timeStringToSeconds(b.time) <= duration,
+    );
+    return added?.length ? [...video.bookmarks, ...added] : video.bookmarks;
+  }, [video.id, video.filePath, video.bookmarks, appState.recording, duration]);
+
   const availableBookmarkTypes = useMemo(() => {
     const order = [
       BookmarkType.Kill,
@@ -2026,13 +2056,16 @@ export default function VideoComponent({ video }: { video: Content }) {
       BookmarkType.Assist,
       BookmarkType.Death,
       BookmarkType.Manual,
+      BookmarkType.ReplaySaved,
+      BookmarkType.ScreenshotSaved,
+      BookmarkType.ClipSaved,
     ];
-    return order.filter((type) => video.bookmarks.some((b) => b.type === type));
-  }, [video.bookmarks]);
+    return order.filter((type) => timelineBookmarks.some((b) => b.type === type));
+  }, [timelineBookmarks]);
 
   const filteredBookmarks = useMemo(() => {
-    return video.bookmarks.filter((bookmark) => selectedBookmarkTypes.has(bookmark.type));
-  }, [video.bookmarks, selectedBookmarkTypes]);
+    return timelineBookmarks.filter((bookmark) => selectedBookmarkTypes.has(bookmark.type));
+  }, [timelineBookmarks, selectedBookmarkTypes]);
 
   // Same lead-in as highlights, including the per-game override
   const highlightPaddingBefore = useMemo(() => {
@@ -2045,14 +2078,49 @@ export default function VideoComponent({ video }: { video: Content }) {
   }, [settings.games, settings.highlightPaddingBefore, video.igdbId, video.game]);
 
   const bookmarkStartTime = (bookmark: Bookmark) => {
+    const time = timeStringToSeconds(bookmark.time);
     const lead = bookmark.type === BookmarkType.Manual ? 10 : highlightPaddingBefore;
-    return Math.max(0, timeStringToSeconds(bookmark.time) - lead);
+    return Math.max(0, time - lead);
   };
 
   const seekToBookmark = (bookmark: Bookmark) => {
     const seekTo = bookmarkStartTime(bookmark);
     setCurrentTime(seekTo);
     if (videoRef.current) videoRef.current.currentTime = seekTo;
+  };
+
+  const getBookmarkMedia = (bookmark: Bookmark): LinkedMedia | undefined => {
+    if (!bookmark.mediaId) return;
+
+    if (bookmark.type === BookmarkType.ReplaySaved || bookmark.type === BookmarkType.ClipSaved) {
+      const type = bookmark.type === BookmarkType.ClipSaved ? 'Clip' : 'Buffer';
+      const saved = appState.content.find(
+        (item) => item.type === type && item.id === bookmark.mediaId,
+      );
+      if (saved) return { type: 'video', video: saved };
+    } else if (bookmark.type === BookmarkType.ScreenshotSaved) {
+      const screenshot = appState.screenshots.find(
+        (item) => !item.isImported && item.fileName === bookmark.mediaId,
+      );
+      if (screenshot) return { type: 'screenshot', screenshot };
+    }
+  };
+
+  const selectBookmark = (bookmark: Bookmark, trigger: HTMLElement) => {
+    seekToBookmark(bookmark);
+    if (bookmarkMediaNames[bookmark.type]) {
+      setBookmarkMenu({ bookmark, trigger });
+    }
+  };
+
+  const linkedBookmarkMedia = bookmarkMenu && getBookmarkMedia(bookmarkMenu.bookmark);
+
+  const openMedia = (media: LinkedMedia, startTime?: number) => {
+    const player = videoRef.current;
+    if (!player) return;
+
+    openLinkedMedia(media, { time: player.currentTime, paused: player.paused }, startTime);
+    closeBookmarkMenu();
   };
 
   // Lets the backend keep a split session's original until the player leaves it
@@ -2236,13 +2304,24 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   return (
     <DndProvider backend={HTML5Backend}>
+      {bookmarkMenu && (
+        <BookmarkMediaMenu
+          trigger={bookmarkMenu.trigger}
+          openLabel={`Open ${bookmarkMediaNames[bookmarkMenu.bookmark.type]}`}
+          canOpen={Boolean(linkedBookmarkMedia)}
+          onOpen={() =>
+            linkedBookmarkMedia && openMedia(linkedBookmarkMedia, bookmarkMenu.bookmark.clipOffset)
+          }
+          onClose={closeBookmarkMenu}
+        />
+      )}
       <div className="flex w-full h-full overflow-hidden bg-base-200" ref={containerRef}>
         <div className="flex flex-col flex-1 w-full h-full p-4 pb-3 overflow-hidden lg:w-3/4">
           <MediaInfoBar
             createdAt={video.createdAt}
             fileSize={video.fileSize}
             filePath={video.filePath}
-            onBack={() => setSelectedVideo(null)}
+            onBack={goBack}
           />
           <div className="flex justify-center w-full mb-px aspect-video shrink min-h-0">
             <div
@@ -2254,7 +2333,7 @@ export default function VideoComponent({ video }: { video: Content }) {
             >
               <div className={videoWrapperClassName}>
                 <video
-                  autoPlay
+                  autoPlay={!resumePlayback}
                   crossOrigin="anonymous"
                   className="w-full h-full object-contain"
                   src={getVideoPath()}
@@ -2264,8 +2343,24 @@ export default function VideoComponent({ video }: { video: Content }) {
                       e.currentTarget.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED,
                     )
                   }
-                  onLoadedMetadata={(e) => setVideoUndecodable(e.currentTarget.videoWidth === 0)}
+                  onLoadedMetadata={(e) => {
+                    const player = e.currentTarget;
+                    setVideoUndecodable(player.videoWidth === 0);
+                    if (!resumePlayback || playbackRestored.current || !player.videoWidth) return;
+
+                    playbackRestored.current = true;
+                    player.currentTime = Math.min(resumePlayback.time, player.duration);
+                    setCurrentTime(player.currentTime);
+                    if (!resumePlayback.paused) {
+                      void player.play().catch(() => setIsPlaying(false));
+                    }
+                  }}
                   onPlay={(e) => videoUndecodable && e.currentTarget.pause()}
+                  onSeeked={(e) => {
+                    if (e.currentTarget.paused && resizeDirectionRef.current == null) {
+                      setCurrentTime(e.currentTarget.currentTime);
+                    }
+                  }}
                   onClick={onVideoClick}
                   onPointerDown={onVideoPointerDown}
                   onPointerMove={onVideoPointerMove}
@@ -2345,9 +2440,10 @@ export default function VideoComponent({ video }: { video: Content }) {
                       >
                         <button
                           type="button"
-                          onClick={() => seekToBookmark(bookmark)}
+                          onClick={(e) => selectBookmark(bookmark, e.currentTarget)}
                           className="flex items-center justify-center w-[22px] h-[22px] rounded-full bg-[#EFAF2B] text-[#25272e] cursor-pointer pointer-events-auto"
-                          aria-label={`${bookmark.type} at ${bookmark.time}`}
+                          aria-label={`${bookmarkLabel(bookmark.type)} at ${bookmark.time}`}
+                          data-bookmark-control
                         >
                           {React.createElement(
                             getIconMapping(video.igdbId)[bookmark.type] || Skull,
@@ -2447,7 +2543,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                                 key={type}
                                 onClick={() => toggleBookmarkType(type)}
                                 className={`flex items-center justify-center p-1.5 rounded-full cursor-pointer transition-colors hover:bg-white/15 ${isShown ? 'text-accent' : 'text-white/40 hover:text-white/70'}`}
-                                aria-label={`${type} bookmarks`}
+                                aria-label={`${bookmarkLabel(type)} bookmarks`}
                                 aria-pressed={isShown}
                               >
                                 {React.createElement(getIconMapping(video.igdbId)[type] || Skull, {
@@ -2607,18 +2703,22 @@ export default function VideoComponent({ video }: { video: Content }) {
                       getIconMapping(video.igdbId)[bookmark.type as BookmarkType] || Skull;
 
                     return (
-                      <motion.div
+                      <motion.button
                         key={`bookmark-${bookmark.id ?? index}`}
+                        type="button"
                         initial={{ opacity: 0, scale: 0.5 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.5 }}
                         transition={{ duration: 0.1 }}
                         className="tooltip absolute bottom-0 transform -translate-x-1/2 cursor-pointer z-10 flex flex-col items-center text-[#25272e]"
-                        data-tip={`${bookmark.type}${bookmark.subtype ? ` - ${bookmark.subtype}` : ''} (${bookmark.time})`}
+                        data-tip={`${bookmarkLabel(bookmark.type)}${bookmark.subtype ? ` - ${bookmark.subtype}` : ''} (${bookmark.time})`}
+                        aria-label={`${bookmarkLabel(bookmark.type)} at ${bookmark.time}`}
+                        data-bookmark-control
                         style={{ left: `${leftPos}px` }}
-                        onClick={() => seekToBookmark(bookmark)}
+                        onClick={(e) => selectBookmark(bookmark, e.currentTarget)}
                         onContextMenu={(e) => {
                           e.preventDefault();
+                          closeBookmarkMenu();
                           handleDeleteBookmark(bookmark.id);
                         }}
                       >
@@ -2626,7 +2726,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                           <Icon size={16} strokeWidth={2.5} />
                         </div>
                         <div className="w-[2px] h-[12px] bg-[#EFAF2B]" />
-                      </motion.div>
+                      </motion.button>
                     );
                   })}
                 </AnimatePresence>
@@ -2894,8 +2994,8 @@ export default function VideoComponent({ video }: { video: Content }) {
                 </div>
               );
             })()}
-          <div className="flex items-center justify-between gap-4 py-1 shrink-0">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1 shrink-0">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center border rounded-lg join bg-base-300 border-base-400">
                 {hasPlaylist && (
                   <button
@@ -2954,7 +3054,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                   <span>Upload</span>
                 </Button>
               )}
-              {(video.type === 'Clip' || video.type === 'Highlight') && copyButtons}
+              {video.type === 'Highlight' && copyButtons}
               {showClipTools && (
                 <>
                   <Button
@@ -2984,7 +3084,21 @@ export default function VideoComponent({ video }: { video: Content }) {
                   </Button>
                 </>
               )}
-              {video.type === 'Buffer' && copyButtons}
+              {(video.type === 'Buffer' || video.type === 'Clip') && (
+                <div className="flex items-center gap-3">
+                  {copyButtons}
+                  <OpenFullSessionButton
+                    bookmarkType={
+                      video.type === 'Clip' ? BookmarkType.ClipSaved : BookmarkType.ReplaySaved
+                    }
+                    mediaId={video.id}
+                    videoRef={videoRef}
+                    clipTime={video.type === 'Clip' ? currentTime : undefined}
+                    duration={duration}
+                  />
+                  <DeleteVideoButton video={video} />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -2996,6 +3110,8 @@ export default function VideoComponent({ video }: { video: Content }) {
                         <button
                           key={type}
                           onClick={() => toggleBookmarkType(type)}
+                          aria-label={`${bookmarkLabel(type)} bookmarks`}
+                          title={`${bookmarkLabel(type)} bookmarks`}
                           className={`btn btn-sm h-full btn-secondary border-none transition-colors join-item px-2 ${selectedBookmarkTypes.has(type) ? 'text-accent' : 'text-gray-300'}`}
                         >
                           {React.createElement(getIconMapping(video.igdbId)[type] || Skull, {

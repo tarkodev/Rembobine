@@ -2,15 +2,45 @@ using System.Text.Json.Serialization;
 
 namespace Segra.Backend.Core.Models
 {
-    public class Bookmark
+    public class Bookmark : IJsonOnDeserialized
     {
-        private static readonly Random random = new();
-        public int Id { get; set; } = random.Next(1, int.MaxValue);
+        public int Id { get; set; } = Random.Shared.Next(1, int.MaxValue);
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public BookmarkType Type { get; set; }
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public BookmarkSubtype? Subtype { get; set; }
         public TimeSpan Time { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MediaId { get; set; }
+        // Time marks the end of the excerpt. ClipOffset is its start in the finished clip, in seconds.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? ClipOffset { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TimeSpan? ClipStart { get; set; }
+
+        // Older bookmarks stored the start in Time and the length in ClipDuration.
+        [JsonPropertyName("ClipDuration"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? LegacyClipDuration { get; set; }
+
+        void IJsonOnDeserialized.OnDeserialized()
+        {
+            if (Type == BookmarkType.ClipSaved && ClipStart == null && LegacyClipDuration is double length)
+            {
+                ClipStart = Time;
+                Time += TimeSpan.FromSeconds(length);
+            }
+            LegacyClipDuration = null;
+        }
+
+        public Bookmark AtTime(TimeSpan time) => new()
+        {
+            Type = Type,
+            Subtype = Subtype,
+            MediaId = MediaId,
+            Time = time,
+            ClipOffset = ClipOffset,
+            ClipStart = ClipStart + (time - Time)
+        };
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -20,7 +50,10 @@ namespace Segra.Backend.Core.Models
         [IncludeInHighlight] Kill,
         [IncludeInHighlight] Goal,
         Assist,
-        Death
+        Death,
+        ReplaySaved,
+        ScreenshotSaved,
+        ClipSaved
     }
 
     /// <summary>

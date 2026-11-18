@@ -234,8 +234,21 @@ internal static class MigrationService
             new("0019_index_first_in_clips", Apply_0019_IndexFirstInClips),
             new("0020_remove_legacy_nvenc_presets", Apply_0020_RemoveLegacyNvencPresets),
             new("0021_non_deprecated_nvenc_ids", Apply_0021_NonDeprecatedNvencIds),
-            new("0022_backfill_played_games", Apply_0022_BackfillPlayedGames)
+            new("0022_backfill_played_games", Apply_0022_BackfillPlayedGames),
+            new("0023_clip_bookmarks_at_end", Apply_0023_ClipBookmarksAtEnd)
         ];
+    }
+
+    private static void Apply_0023_ClipBookmarksAtEnd()
+    {
+        ForEachVideo("0023", c => c.Bookmarks?.Any(b => b.Type == BookmarkType.ClipSaved) == true, c =>
+        {
+            // Deserialization upgrades the old range. Persist it in the sidecar and in the MP4 chapters.
+            var path = FolderNames.GetMetadataFilePath(c.Type, c.Id);
+            var updated = ContentService.UpdateMetadataFile(path, _ => { }).GetAwaiter().GetResult();
+            if (updated != null)
+                EmbeddedMetadataService.EmbedAsync(updated).GetAwaiter().GetResult();
+        });
     }
 
     // Migration 0022: Every game in the library gets a per-game entry that follows auto-record.

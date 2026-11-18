@@ -6,6 +6,7 @@ import Clips from './Pages/clips';
 import ReplayBuffer from './Pages/replay-buffer';
 import Highlights from './Pages/highlights';
 import Screenshots from './Pages/screenshots';
+import ScreenshotViewer from './Components/ScreenshotViewer';
 import { SettingsProvider } from './Context/SettingsContext';
 import { AppStateProvider } from './Context/AppStateContext';
 import Video from './Pages/video';
@@ -14,7 +15,12 @@ import { useSelectedMenu } from './Context/SelectedMenuContext';
 import { themeChange } from 'theme-change';
 import { useSettings } from './Context/SettingsContext';
 import { useAppState } from './Context/AppStateContext';
-import { DEFAULT_MENU_ITEMS, MenuItemId, menuItemHasContent } from './Models/types';
+import {
+  CONTENT_MENU_ITEMS,
+  DEFAULT_MENU_ITEMS,
+  MenuItemId,
+  menuItemHasContent,
+} from './Models/types';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { DndProvider } from 'react-dnd';
 import { SegmentsProvider } from './Context/SegmentsContext';
@@ -53,10 +59,20 @@ function App() {
   const { session, signOut } = useAuth();
   const { data: profile } = useProfile();
 
-  const { selectedVideo, setSelectedVideo } = useSelectedVideo();
+  const { selectedVideo, linkedScreenshot, setSelectedVideo, goBack } = useSelectedVideo();
   const { selectedMenu, setSelectedMenu } = useSelectedMenu();
+  const mediaMenu = linkedScreenshot
+    ? 'Screenshots'
+    : selectedVideo && CONTENT_MENU_ITEMS[selectedVideo.type];
+  const [selectedScreenshotPath, setSelectedScreenshotPath] = useState<string | null>(null);
   const settings = useSettings();
   const appState = useAppState();
+  const savedVideo = selectedVideo && appState.content.find((item) => item.id === selectedVideo.id);
+  const removedVideo =
+    (selectedVideo?.type === 'Buffer' || selectedVideo?.type === 'Clip') && !savedVideo;
+  useEffect(() => {
+    if (removedVideo) goBack();
+  }, [removedVideo, selectedVideo?.id, goBack]);
   const needsUsername = !settings.airplaneMode && session && profile?.username?.startsWith('user_');
 
   // Airplane mode hides all cloud features and must not keep a signed-in session.
@@ -97,14 +113,23 @@ function App() {
 
   const handleMenuSelection = (menu: MenuItemId | string) => {
     setSelectedVideo(null);
+    setSelectedScreenshotPath(null);
     setSelectedMenu(menu);
   };
 
   const renderContent = () => {
+    if (linkedScreenshot) {
+      const screenshot =
+        appState.screenshots.find((item) => item.filePath === linkedScreenshot.filePath) ??
+        linkedScreenshot;
+      return <ScreenshotViewer screenshot={screenshot} onBack={goBack} />;
+    }
+
     if (selectedVideo) {
+      if (removedVideo) return null;
       return (
         <DndProvider backend={HTML5Backend}>
-          <Video key={selectedVideo.id} video={selectedVideo} />
+          <Video key={selectedVideo.id} video={savedVideo ?? selectedVideo} />
         </DndProvider>
       );
     }
@@ -119,7 +144,9 @@ function App() {
       case 'Highlights':
         return <Highlights />;
       case 'Screenshots':
-        return <Screenshots />;
+        return (
+          <Screenshots selectedPath={selectedScreenshotPath} onSelect={setSelectedScreenshotPath} />
+        );
       case 'Settings':
         return <Settings />;
       default:
@@ -131,7 +158,7 @@ function App() {
     <div className="flex h-screen w-screen">
       {needsUsername && <SetupProfileModal />}
       <div className="h-full">
-        <Menu selectedMenu={selectedMenu} onSelectMenu={handleMenuSelection} />
+        <Menu selectedMenu={mediaMenu ?? selectedMenu} onSelectMenu={handleMenuSelection} />
       </div>
       <div className="flex-1 max-h-full overflow-auto">{renderContent()}</div>
     </div>

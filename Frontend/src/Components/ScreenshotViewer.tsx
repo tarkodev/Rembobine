@@ -1,70 +1,57 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  FolderOpen,
-  Maximize,
-  Minimize,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-} from 'lucide-react';
+import { Maximize, Minimize, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'lucide-react';
 import { useModal } from '../Context/ModalContext';
-import type { Screenshot } from '../Models/types';
-import { getContentFileUrl, openFileLocation } from '../Utils/FileUtils';
+import { MAX_SCREENSHOT_ZOOM, useScreenshotViewport } from '../Hooks/useScreenshotViewport';
+import { BookmarkType, type Screenshot } from '../Models/types';
+import { getContentFileUrl } from '../Utils/FileUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
-import Button from './Button';
+import CopyFileButton from './CopyFileButton';
+import OpenFullSessionButton from './OpenFullSessionButton';
 import MediaInfoBar from './MediaInfoBar';
+import ScreenshotActions from './ScreenshotActions';
 
 interface ScreenshotViewerProps {
   screenshot: Screenshot;
-  previous: Screenshot | undefined;
-  next: Screenshot | undefined;
-  position: number;
-  total: number;
+  navigation?: {
+    previous?: Screenshot;
+    next?: Screenshot;
+    onSelect: (filePath: string) => void;
+  };
   onBack: () => void;
-  onSelect: (filePath: string) => void;
-  onDelete: (screenshot: Screenshot) => void;
 }
 
-const toolClass = 'text-white/90 hover:text-white hover:bg-white/15 disabled:opacity-40';
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
+const playerButtonClass =
+  'flex items-center justify-center p-1.5 rounded-full text-white/90 cursor-pointer transition-colors hover:text-white hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
+const navigationButtonClass =
+  'h-10 text-gray-300 btn btn-sm btn-secondary hover:text-accent join-item active:translate-none! disabled:text-gray-300/50';
 
 export default function ScreenshotViewer({
   screenshot,
-  previous,
-  next,
-  position,
-  total,
+  navigation,
   onBack,
-  onSelect,
-  onDelete,
 }: ScreenshotViewerProps) {
   const { isModalOpen } = useModal();
+  const { previous, next, onSelect } = navigation ?? {};
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
-  const [zoom, setZoom] = useState(1);
   const [imageFailed, setImageFailed] = useState(false);
-  const viewportRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setZoom(1);
-    setImageFailed(false);
-  }, [screenshot.filePath]);
+  const {
+    stageRef,
+    viewportRef,
+    viewportSize,
+    imageRef,
+    onImageLoad,
+    view,
+    isPanning,
+    changeZoom,
+    onPointerDown,
+    onPointerMove,
+    endPan,
+  } = useScreenshotViewport(screenshot.filePath);
 
   useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    viewport.scrollTo(
-      (viewport.scrollWidth - viewport.clientWidth) / 2,
-      (viewport.scrollHeight - viewport.clientHeight) / 2,
-    );
-  }, [zoom, isFullscreen]);
+    setImageFailed(false);
+  }, [screenshot.filePath]);
 
   const toggleFullscreen = useCallback(() => {
     const enabled = !fullscreenRef.current;
@@ -87,11 +74,11 @@ export default function ScreenshotViewer({
 
       switch (event.key) {
         case 'ArrowLeft':
-          if (!previous) return;
+          if (!previous || !onSelect) return;
           onSelect(previous.filePath);
           break;
         case 'ArrowRight':
-          if (!next) return;
+          if (!next || !onSelect) return;
           onSelect(next.filePath);
           break;
         case 'f':
@@ -115,146 +102,131 @@ export default function ScreenshotViewer({
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-base-200 p-4">
+      <h1 className="sr-only">{screenshot.title}</h1>
       <MediaInfoBar
         createdAt={screenshot.createdAt}
-        fileSize={formatSize(screenshot.fileSizeBytes)}
+        fileSize={screenshot.fileSize ?? '—'}
         filePath={screenshot.filePath}
         onBack={onBack}
       />
       <div
-        className={`flex min-h-0 flex-col overflow-hidden bg-black ${
-          isFullscreen ? 'fixed inset-0 z-50' : 'flex-1 rounded-lg'
+        ref={stageRef}
+        className={`flex items-center justify-center overflow-hidden ${
+          isFullscreen ? 'fixed inset-0 z-50 bg-base-200' : 'min-h-0 flex-1'
         }`}
       >
-        <div ref={viewportRef} className="min-h-0 flex-1 overflow-auto">
-          {imageFailed ? (
-            <div
-              className="grid h-full place-items-center p-4 text-center text-white/70"
-              role="status"
-            >
-              Could not open this screenshot.
-            </div>
-          ) : (
-            <div style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
+        <div
+          className={`group/preview relative shrink-0 overflow-hidden ${isFullscreen ? '' : 'rounded-lg'}`}
+          style={viewportSize}
+        >
+          <div
+            ref={viewportRef}
+            className={`absolute inset-0 overflow-hidden ${view.scale > 1 ? `touch-none ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}` : ''}`}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endPan}
+            onPointerCancel={endPan}
+            onLostPointerCapture={endPan}
+          >
+            {imageFailed ? (
+              <div
+                className="grid h-full place-items-center p-4 text-center text-white/70"
+                role="status"
+              >
+                Could not open this screenshot.
+              </div>
+            ) : (
               <img
                 key={screenshot.filePath}
+                ref={imageRef}
                 className="block h-full w-full select-none object-contain"
+                style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
                 draggable={false}
                 src={getContentFileUrl(screenshot.filePath)}
                 alt={screenshot.title}
+                onLoad={onImageLoad}
                 onError={() => setImageFailed(true)}
               />
-            </div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-white">
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              disabled={!previous}
-              onClick={() => previous && onSelect(previous.filePath)}
-              aria-label="Previous screenshot"
-              title="Previous screenshot (←)"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <span className="px-1 text-xs tabular-nums text-white/70">
-              {position} / {total}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              disabled={!next}
-              onClick={() => next && onSelect(next.filePath)}
-              aria-label="Next screenshot"
-              title="Next screenshot (→)"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
+            )}
           </div>
-          <h1
-            className="min-w-0 flex-1 truncate text-center text-sm font-medium"
-            title={screenshot.title}
-          >
-            {screenshot.title}
-          </h1>
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              disabled={imageFailed || zoom <= 1}
-              onClick={() => setZoom((value) => Math.max(1, value - 0.5))}
-              aria-label="Zoom out"
-              title="Zoom out"
-            >
-              <ZoomOut className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`${toolClass} px-1 tabular-nums`}
-              disabled={imageFailed || zoom === 1}
-              onClick={() => setZoom(1)}
-              aria-label="Fit image to window"
-              title="Fit image to window"
-            >
-              {Math.round(zoom * 100)}%
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              disabled={imageFailed || zoom >= 4}
-              onClick={() => setZoom((value) => Math.min(4, value + 0.5))}
-              aria-label="Zoom in"
-              title="Zoom in"
-            >
-              <ZoomIn className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              aria-label="Open file location"
-              title="Open file location"
-              onClick={() => openFileLocation(screenshot.filePath)}
-            >
-              <FolderOpen className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              aria-label="Delete screenshot"
-              title="Delete screenshot"
-              onClick={() => onDelete(screenshot)}
-            >
-              <Trash2 className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon
-              className={toolClass}
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
-              onClick={toggleFullscreen}
-            >
-              {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-            </Button>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 isolate flex justify-end px-3 pb-2 opacity-0 select-none transition-opacity duration-200 group-hover/preview:opacity-100 has-[:focus-visible]:opacity-100 [@media(hover:none)]:opacity-100">
+            <div className="absolute inset-x-0 bottom-0 -z-10 h-24 bg-linear-to-t from-black/80 via-black/35 to-transparent" />
+            <div className="flex items-center gap-1 group-hover/preview:pointer-events-auto has-[:focus-visible]:pointer-events-auto [@media(hover:none)]:pointer-events-auto">
+              <button
+                type="button"
+                className={playerButtonClass}
+                disabled={imageFailed || view.scale <= 1}
+                onClick={() => changeZoom((scale) => scale - 0.5)}
+                aria-label="Zoom out"
+                title="Zoom out"
+              >
+                <ZoomOut className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className={playerButtonClass}
+                disabled={imageFailed || view.scale >= MAX_SCREENSHOT_ZOOM}
+                onClick={() => changeZoom((scale) => scale + 0.5)}
+                aria-label="Zoom in"
+                title="Zoom in"
+              >
+                <ZoomIn className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className={playerButtonClass}
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
+                onClick={toggleFullscreen}
+              >
+                {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>
+      {!isFullscreen && (
+        <div className="flex shrink-0 items-center justify-between gap-3 pt-2">
+          <div className="flex items-center gap-3">
+            {navigation && (
+              <div className="join flex items-center rounded-lg border border-base-400 bg-base-300">
+                <button
+                  type="button"
+                  className={navigationButtonClass}
+                  disabled={!previous}
+                  onClick={() => previous && navigation.onSelect(previous.filePath)}
+                  aria-label="Previous screenshot"
+                  title="Previous screenshot (←)"
+                >
+                  <SkipBack className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  className={navigationButtonClass}
+                  disabled={!next}
+                  onClick={() => next && navigation.onSelect(next.filePath)}
+                  aria-label="Next screenshot"
+                  title="Next screenshot (→)"
+                >
+                  <SkipForward className="h-5 w-5" />
+                </button>
+              </div>
+            )}
+            <CopyFileButton key={screenshot.filePath} filePath={screenshot.filePath} />
+            <OpenFullSessionButton
+              bookmarkType={BookmarkType.ScreenshotSaved}
+              mediaId={screenshot.isImported ? undefined : screenshot.fileName}
+            />
+          </div>
+          <ScreenshotActions
+            key={screenshot.filePath}
+            screenshot={screenshot}
+            onDelete={onBack}
+            className="btn btn-sm btn-secondary h-10 border-base-400 text-gray-300 hover:text-accent"
+            showCopy={false}
+          />
+        </div>
+      )}
     </section>
   );
 }
