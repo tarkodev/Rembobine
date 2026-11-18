@@ -205,7 +205,7 @@ namespace Segra.Backend.App
                                 {
                                     try
                                     {
-                                        ScreenshotService.Delete(screenshotPath);
+                                        await ScreenshotService.DeleteAsync(screenshotPath);
                                     }
                                     catch (Exception ex)
                                     {

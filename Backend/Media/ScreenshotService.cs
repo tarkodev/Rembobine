@@ -6,6 +6,7 @@ using ObsKit.NET;
 using ObsKit.NET.Native.Types;
 using ObsKit.NET.Video;
 using Segra.Backend.App;
+using Segra.Backend.Core;
 using Segra.Backend.Core.Models;
 using Segra.Backend.Platform;
 using Segra.Backend.Recorder;
@@ -403,8 +404,9 @@ namespace Segra.Backend.Media
             }
         }
 
-        internal static void Delete(string path)
+        internal static async Task DeleteAsync(string path)
         {
+            bool captured;
             lock (_libraryLock)
             {
                 string directory = Path.GetFullPath(DirectoryPath);
@@ -412,6 +414,9 @@ namespace Segra.Backend.Media
                     return;
 
                 File.Delete(path);
+                captured = string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), directory, PathComparison);
+                if (captured)
+                    ContentService.RemoveBookmarksForDeletedMedia(BookmarkType.ScreenshotSaved, Path.GetFileName(path));
                 try
                 {
                     var titles = ReadTitles(directory);
@@ -424,7 +429,10 @@ namespace Segra.Backend.Media
                 }
             }
 
-            RefreshAfterFileChange();
+            if (captured)
+                await SettingsService.LoadContentFromFolderIntoState();
+            else
+                RefreshAfterFileChange();
         }
 
         private static Dictionary<string, string> ReadTitles(string directory)

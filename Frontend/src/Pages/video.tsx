@@ -2035,15 +2035,32 @@ export default function VideoComponent({ video }: { video: Content }) {
     localStorage.setItem('segra-hidden-bookmark-types', JSON.stringify(hidden));
   }, [selectedBookmarkTypes]);
 
+  const getBookmarkMedia = useMemo(() => {
+    const media = new Map<string, LinkedMedia>();
+    for (const video of appState.content) {
+      if (video.type === 'Buffer' || video.type === 'Clip') {
+        const type = video.type === 'Clip' ? BookmarkType.ClipSaved : BookmarkType.ReplaySaved;
+        media.set(`${type}:${video.id}`, { type: 'video', video });
+      }
+    }
+    for (const screenshot of appState.screenshots) {
+      if (!screenshot.isImported) {
+        media.set(`${BookmarkType.ScreenshotSaved}:${screenshot.fileName}`, {
+          type: 'screenshot',
+          screenshot,
+        });
+      }
+    }
+    return (bookmark: Bookmark) =>
+      bookmark.mediaId ? media.get(`${bookmark.type}:${bookmark.mediaId}`) : undefined;
+  }, [appState.content, appState.screenshots]);
+
   const timelineBookmarks = useMemo(() => {
     if (!video.id.startsWith('live-')) return video.bookmarks;
     const recording = appState.recording;
-    // A live snapshot can stay on the Back stack while the replay it linked to is deleted.
-    const replays = new Set(
-      appState.content.filter((item) => item.type === 'Buffer').map((item) => item.id),
-    );
+    // The live snapshot on the Back stack can outlast the media it linked to.
     const snapshot = video.bookmarks.filter(
-      (b) => b.type !== BookmarkType.ReplaySaved || !b.mediaId || replays.has(b.mediaId),
+      (b) => !bookmarkMediaNames[b.type] || !b.mediaId || getBookmarkMedia(b),
     );
     if (recording?.filePath !== video.filePath) return snapshot;
     const ids = new Set(snapshot.map((b) => b.id));
@@ -2051,10 +2068,11 @@ export default function VideoComponent({ video }: { video: Content }) {
       (b) =>
         b.type === BookmarkType.ClipSaved &&
         !ids.has(b.id) &&
+        getBookmarkMedia(b) &&
         timeStringToSeconds(b.time) <= duration,
     );
     return added?.length ? [...snapshot, ...added] : snapshot;
-  }, [video.id, video.filePath, video.bookmarks, appState.recording, appState.content, duration]);
+  }, [video.id, video.filePath, video.bookmarks, appState.recording, getBookmarkMedia, duration]);
 
   const availableBookmarkTypes = useMemo(() => {
     const order = [
@@ -2094,23 +2112,6 @@ export default function VideoComponent({ video }: { video: Content }) {
     const seekTo = bookmarkStartTime(bookmark);
     setCurrentTime(seekTo);
     if (videoRef.current) videoRef.current.currentTime = seekTo;
-  };
-
-  const getBookmarkMedia = (bookmark: Bookmark): LinkedMedia | undefined => {
-    if (!bookmark.mediaId) return;
-
-    if (bookmark.type === BookmarkType.ReplaySaved || bookmark.type === BookmarkType.ClipSaved) {
-      const type = bookmark.type === BookmarkType.ClipSaved ? 'Clip' : 'Buffer';
-      const saved = appState.content.find(
-        (item) => item.type === type && item.id === bookmark.mediaId,
-      );
-      if (saved) return { type: 'video', video: saved };
-    } else if (bookmark.type === BookmarkType.ScreenshotSaved) {
-      const screenshot = appState.screenshots.find(
-        (item) => !item.isImported && item.fileName === bookmark.mediaId,
-      );
-      if (screenshot) return { type: 'screenshot', screenshot };
-    }
   };
 
   const selectBookmark = (bookmark: Bookmark, trigger: HTMLElement) => {

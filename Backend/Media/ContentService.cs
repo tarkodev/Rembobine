@@ -20,10 +20,17 @@ namespace Segra.Backend.Media
         };
 
         // A split, merge or recording finalization can still be publishing a snapshot taken before deletion.
-        private static readonly ConcurrentDictionary<string, byte> DeletedReplayIds = new();
+        private static readonly ConcurrentDictionary<(BookmarkType Type, string MediaId), byte> DeletedMedia = new();
 
-        internal static bool IsDeletedReplayBookmark(Bookmark bookmark) =>
-            bookmark.Type == BookmarkType.ReplaySaved && bookmark.MediaId != null && DeletedReplayIds.ContainsKey(bookmark.MediaId);
+        internal static bool IsDeletedMediaBookmark(Bookmark bookmark) =>
+            bookmark.MediaId != null && DeletedMedia.ContainsKey((bookmark.Type, bookmark.MediaId));
+
+        internal static void RemoveBookmarksForDeletedMedia(BookmarkType type, string mediaId)
+        {
+            DeletedMedia.TryAdd((type, mediaId), 0);
+            AppState.Instance.Recording?.RemoveDeletedMediaBookmarks();
+            OBSService.FinishingSession?.RemoveDeletedMediaBookmarks();
+        }
 
         /// <summary>
         /// Writes the metadata file for a video and returns the new content id, or null when it could not be written.
@@ -71,7 +78,7 @@ namespace Segra.Backend.Media
                     Type = type,
                     Title = title ?? string.Empty,
                     Game = game,
-                    Bookmarks = type == Content.ContentType.Session ? bookmarks.Where(b => !IsDeletedReplayBookmark(b)).ToList() : bookmarks,
+                    Bookmarks = bookmarks.Where(b => !IsDeletedMediaBookmark(b)).ToList(),
                     Matches = matches is { Count: > 0 } ? matches.OrderBy(m => m.StartTime).ToList() : null,
                     FileName = contentFileName,
                     FilePath = filePath,
@@ -740,11 +747,12 @@ namespace Segra.Backend.Media
                     return videoRemoved;
                 }
 
-                if (type == Content.ContentType.Buffer && !replacingOriginal)
+                if (!replacingOriginal)
                 {
-                    DeletedReplayIds.TryAdd(id, 0);
-                    AppState.Instance.Recording?.RemoveDeletedReplayBookmarks();
-                    OBSService.FinishingSession?.RemoveDeletedReplayBookmarks();
+                    if (type == Content.ContentType.Buffer)
+                        RemoveBookmarksForDeletedMedia(BookmarkType.ReplaySaved, id);
+                    else if (type == Content.ContentType.Clip)
+                        RemoveBookmarksForDeletedMedia(BookmarkType.ClipSaved, id);
                 }
 
                 string metadataFilePath = FolderNames.GetMetadataFilePath(type, id);
@@ -876,7 +884,7 @@ namespace Segra.Backend.Media
                 var content = await UpdateMetadataFile(FolderNames.GetMetadataFilePath(contentItem.Type, contentId), c =>
                 {
                     c.Bookmarks ??= [];
-                    added = newBookmarks.Where(b => !c.Bookmarks.Any(e => e.Id == b.Id)).ToList();
+                    added = newBookmarks.Where(b => !IsDeletedMediaBookmark(b) && !c.Bookmarks.Any(e => e.Id == b.Id)).ToList();
                     c.Bookmarks.AddRange(added);
                 });
                 if (content == null || added.Count == 0)

@@ -78,26 +78,24 @@ namespace Segra.Backend.Media
         {
             bool indexFirst = KeepsIndexFirst(content);
 
-            var metadata = new EmbeddedMetadata
-            {
-                Game = content.Game,
-                IgdbId = content.IgdbId,
-                GameExePath = content.GameExePath,
-                Title = content.Title,
-                CreatedAt = content.CreatedAt,
-                AudioTrackNames = content.AudioTrackNames,
-                AudioTrackTypes = content.AudioTrackTypes,
-                Compressed = content.Compressed,
-                Bookmarks = content.GetBookmarks()
-                    .Where(b => content.Type != Content.ContentType.Session || !ContentService.IsDeletedReplayBookmark(b))
-                    .OrderBy(b => b.Time).ToList(),
-                Matches = content.Matches is { Count: > 0 } ? content.Matches : null,
-            };
-
             using var work = BackgroundWork.Begin();
             await _writeLock.WaitAsync();
             try
             {
+                var metadata = new EmbeddedMetadata
+                {
+                    Game = content.Game,
+                    IgdbId = content.IgdbId,
+                    GameExePath = content.GameExePath,
+                    Title = content.Title,
+                    CreatedAt = content.CreatedAt,
+                    AudioTrackNames = content.AudioTrackNames,
+                    AudioTrackTypes = content.AudioTrackTypes,
+                    Compressed = content.Compressed,
+                    Bookmarks = content.GetBookmarks().Where(b => !ContentService.IsDeletedMediaBookmark(b))
+                        .OrderBy(b => b.Time).ToList(),
+                    Matches = content.Matches is { Count: > 0 } ? content.Matches : null,
+                };
                 await Task.Run(() => Embed(content.FilePath, metadata, indexFirst));
             }
             catch (Exception ex)

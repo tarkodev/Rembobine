@@ -1180,11 +1180,10 @@ namespace Segra.Backend.Core
                             var metadataContent = File.ReadAllText(serializedMetadataFilePath);
                             var metadata = JsonSerializer.Deserialize<Content>(metadataContent);
 
-                            if (metadata?.Type == Content.ContentType.Session &&
-                                metadata.Bookmarks?.Exists(ContentService.IsDeletedReplayBookmark) == true)
+                            if (metadata?.Bookmarks?.Exists(ContentService.IsDeletedMediaBookmark) == true)
                             {
                                 var updated = await ContentService.UpdateMetadataFile(serializedMetadataFilePath,
-                                    c => c.Bookmarks?.RemoveAll(ContentService.IsDeletedReplayBookmark));
+                                    c => c.Bookmarks?.RemoveAll(ContentService.IsDeletedMediaBookmark));
                                 if (updated != null)
                                 {
                                     metadata = updated;

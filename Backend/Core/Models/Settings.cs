@@ -1327,7 +1327,7 @@ namespace Segra.Backend.Core.Models
         {
             lock (_bookmarksLock)
             {
-                if (ContentService.IsDeletedReplayBookmark(bookmark))
+                if (ContentService.IsDeletedMediaBookmark(bookmark))
                     return;
                 Bookmarks.Add(bookmark);
             }
@@ -1343,10 +1343,10 @@ namespace Segra.Backend.Core.Models
             }
         }
 
-        internal void RemoveDeletedReplayBookmarks()
+        internal void RemoveDeletedMediaBookmarks()
         {
             lock (_bookmarksLock)
-                Bookmarks.RemoveAll(ContentService.IsDeletedReplayBookmark);
+                Bookmarks.RemoveAll(ContentService.IsDeletedMediaBookmark);
         }
 
         internal PendingMediaBookmark? BeginLinkedBookmark(BookmarkType type, DateTime triggeredAt)
@@ -1485,6 +1485,8 @@ namespace Segra.Backend.Core.Models
         {
             lock (_bookmarksLock)
             {
+                if (ContentService.IsDeletedMediaBookmark(bookmark))
+                    return;
                 Bookmarks.Add(bookmark);
             }
             AppState.Instance.NotifyContentUpdated();
