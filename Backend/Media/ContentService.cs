@@ -1,9 +1,11 @@
 using Serilog;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Segra.Backend.App;
 using Segra.Backend.Core;
 using Segra.Backend.Games;
+using Segra.Backend.Recorder;
 using Segra.Backend.Shared;
 using Segra.Backend.Core.Models;
 using Segra.Backend.Windows.Storage;
@@ -16,6 +18,12 @@ namespace Segra.Backend.Media
         {
             WriteIndented = true
         };
+
+        // A split, merge or recording finalization can still be publishing a snapshot taken before deletion.
+        private static readonly ConcurrentDictionary<string, byte> DeletedReplayIds = new();
+
+        internal static bool IsDeletedReplayBookmark(Bookmark bookmark) =>
+            bookmark.Type == BookmarkType.ReplaySaved && bookmark.MediaId != null && DeletedReplayIds.ContainsKey(bookmark.MediaId);
 
         /// <summary>
         /// Writes the metadata file for a video and returns the new content id, or null when it could not be written.
@@ -63,7 +71,7 @@ namespace Segra.Backend.Media
                     Type = type,
                     Title = title ?? string.Empty,
                     Game = game,
-                    Bookmarks = bookmarks,
+                    Bookmarks = type == Content.ContentType.Session ? bookmarks.Where(b => !IsDeletedReplayBookmark(b)).ToList() : bookmarks,
                     Matches = matches is { Count: > 0 } ? matches.OrderBy(m => m.StartTime).ToList() : null,
                     FileName = contentFileName,
                     FilePath = filePath,
@@ -663,7 +671,7 @@ namespace Segra.Backend.Media
             }
         }
 
-        public static async Task<bool> DeleteContent(string filePath, Content.ContentType type, string? id, bool sendToFrontend = true, bool reloadState = true, bool keepWebcam = false)
+        public static async Task<bool> DeleteContent(string filePath, Content.ContentType type, string? id, bool sendToFrontend = true, bool reloadState = true, bool replacingOriginal = false)
         {
             bool videoRemoved = false;
             try
@@ -732,12 +740,19 @@ namespace Segra.Backend.Media
                     return videoRemoved;
                 }
 
+                if (type == Content.ContentType.Buffer && !replacingOriginal)
+                {
+                    DeletedReplayIds.TryAdd(id, 0);
+                    AppState.Instance.Recording?.RemoveDeletedReplayBookmarks();
+                    OBSService.FinishingSession?.RemoveDeletedReplayBookmarks();
+                }
+
                 string metadataFilePath = FolderNames.GetMetadataFilePath(type, id);
                 if (File.Exists(metadataFilePath))
                 {
                     try
                     {
-                        if (!keepWebcam)
+                        if (!replacingOriginal)
                             DeleteWebcamFile(JsonSerializer.Deserialize<Content>(File.ReadAllText(metadataFilePath))?.Webcam?.FilePath);
                     }
                     catch (Exception ex)

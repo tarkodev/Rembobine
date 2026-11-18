@@ -18,6 +18,7 @@ namespace Segra.Backend.Core
         public static readonly string SettingsFilePath = PathUtils.Normalize(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Segra", "settings.json"));
         private static readonly string BackupFilePath = SettingsFilePath + ".bak";
         private static readonly object _saveLock = new();
+        private static readonly SemaphoreSlim ContentLoadLock = new(1, 1);
         private static string? _lastSavedJson;
 
         public static void SaveSettings(bool force = false, bool suppressLog = false)
@@ -1137,6 +1138,20 @@ namespace Segra.Backend.Core
             if (awaitMigrations && MigrationService.IsRunning)
                 await MigrationService.WaitForMigrationsAsync();
 
+            // An earlier scan must not publish its stale bookmarks after a deletion has refreshed the library.
+            await ContentLoadLock.WaitAsync();
+            try
+            {
+                await LoadContentFromFolder(sendToFrontend);
+            }
+            finally
+            {
+                ContentLoadLock.Release();
+            }
+        }
+
+        private static async Task LoadContentFromFolder(bool sendToFrontend)
+        {
             var contentTypes = Enum.GetValues(typeof(Content.ContentType)).Cast<Content.ContentType>().ToArray();
             var content = new List<Content>();
             int invalidMetadataCount = 0;
@@ -1164,6 +1179,19 @@ namespace Segra.Backend.Core
                         {
                             var metadataContent = File.ReadAllText(serializedMetadataFilePath);
                             var metadata = JsonSerializer.Deserialize<Content>(metadataContent);
+
+                            if (metadata?.Type == Content.ContentType.Session &&
+                                metadata.Bookmarks?.Exists(ContentService.IsDeletedReplayBookmark) == true)
+                            {
+                                var updated = await ContentService.UpdateMetadataFile(serializedMetadataFilePath,
+                                    c => c.Bookmarks?.RemoveAll(ContentService.IsDeletedReplayBookmark));
+                                if (updated != null)
+                                {
+                                    metadata = updated;
+                                    if (File.Exists(updated.FilePath))
+                                        await EmbeddedMetadataService.EmbedAsync(updated);
+                                }
+                            }
 
                             if (metadata == null || !File.Exists(metadata.FilePath))
                             {

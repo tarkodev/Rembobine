@@ -1,5 +1,6 @@
 using Serilog;
 using Segra.Backend.App;
+using Segra.Backend.Media;
 using Segra.Backend.Platform;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -1326,6 +1327,8 @@ namespace Segra.Backend.Core.Models
         {
             lock (_bookmarksLock)
             {
+                if (ContentService.IsDeletedReplayBookmark(bookmark))
+                    return;
                 Bookmarks.Add(bookmark);
             }
             AppState.Instance.NotifyRecordingUpdated();
@@ -1338,6 +1341,12 @@ namespace Segra.Backend.Core.Models
             {
                 return [.. Bookmarks];
             }
+        }
+
+        internal void RemoveDeletedReplayBookmarks()
+        {
+            lock (_bookmarksLock)
+                Bookmarks.RemoveAll(ContentService.IsDeletedReplayBookmark);
         }
 
         internal PendingMediaBookmark? BeginLinkedBookmark(BookmarkType type, DateTime triggeredAt)

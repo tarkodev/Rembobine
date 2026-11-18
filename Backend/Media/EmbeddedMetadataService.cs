@@ -88,7 +88,9 @@ namespace Segra.Backend.Media
                 AudioTrackNames = content.AudioTrackNames,
                 AudioTrackTypes = content.AudioTrackTypes,
                 Compressed = content.Compressed,
-                Bookmarks = content.Bookmarks?.OrderBy(b => b.Time).ToList() ?? [],
+                Bookmarks = content.GetBookmarks()
+                    .Where(b => content.Type != Content.ContentType.Session || !ContentService.IsDeletedReplayBookmark(b))
+                    .OrderBy(b => b.Time).ToList(),
                 Matches = content.Matches is { Count: > 0 } ? content.Matches : null,
             };
 

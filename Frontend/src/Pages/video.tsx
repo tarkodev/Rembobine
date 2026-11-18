@@ -2036,18 +2036,25 @@ export default function VideoComponent({ video }: { video: Content }) {
   }, [selectedBookmarkTypes]);
 
   const timelineBookmarks = useMemo(() => {
+    if (!video.id.startsWith('live-')) return video.bookmarks;
     const recording = appState.recording;
-    if (!video.id.startsWith('live-') || recording?.filePath !== video.filePath)
-      return video.bookmarks;
-    const ids = new Set(video.bookmarks.map((b) => b.id));
+    // A live snapshot can stay on the Back stack while the replay it linked to is deleted.
+    const replays = new Set(
+      appState.content.filter((item) => item.type === 'Buffer').map((item) => item.id),
+    );
+    const snapshot = video.bookmarks.filter(
+      (b) => b.type !== BookmarkType.ReplaySaved || !b.mediaId || replays.has(b.mediaId),
+    );
+    if (recording?.filePath !== video.filePath) return snapshot;
+    const ids = new Set(snapshot.map((b) => b.id));
     const added = recording?.bookmarks?.filter(
       (b) =>
         b.type === BookmarkType.ClipSaved &&
         !ids.has(b.id) &&
         timeStringToSeconds(b.time) <= duration,
     );
-    return added?.length ? [...video.bookmarks, ...added] : video.bookmarks;
-  }, [video.id, video.filePath, video.bookmarks, appState.recording, duration]);
+    return added?.length ? [...snapshot, ...added] : snapshot;
+  }, [video.id, video.filePath, video.bookmarks, appState.recording, appState.content, duration]);
 
   const availableBookmarkTypes = useMemo(() => {
     const order = [

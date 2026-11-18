@@ -190,7 +190,7 @@ namespace Segra.Backend.Media
                     // thumbnail/waveform/metadata aren't removed right after being written.
                     await Task.Delay(500);
                     // The compressed video takes over the webcam layer
-                    await ContentService.DeleteContent(filePath, contentType, originalContent.Id, false, keepWebcam: true);
+                    await ContentService.DeleteContent(filePath, contentType, originalContent.Id, false, replacingOriginal: true);
                 }
 
                 string finalPath = GetAvailablePath(directory, fileName, extension);
