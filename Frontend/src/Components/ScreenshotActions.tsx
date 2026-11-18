@@ -11,16 +11,14 @@ import RenameScreenshotModal from './RenameScreenshotModal';
 
 interface ScreenshotActionsProps {
   screenshot: Screenshot;
-  onDelete?: () => void;
   className?: string;
-  showCopy?: boolean;
+  inViewer?: boolean;
 }
 
 export default function ScreenshotActions({
   screenshot,
-  onDelete,
   className = 'btn btn-ghost btn-sm btn-circle hover:bg-white/10 active:bg-white/10',
-  showCopy = true,
+  inViewer = false,
 }: ScreenshotActionsProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -90,7 +88,6 @@ export default function ScreenshotActions({
       description: screenshot.fileName,
       onConfirm: () => {
         sendMessageToBackend('DeleteScreenshot', { FilePath: screenshot.filePath });
-        onDelete?.();
       },
     });
 
@@ -117,7 +114,7 @@ export default function ScreenshotActions({
             className="menu fixed top-0 left-0 z-1000 w-52 rounded-box border border-base-400 bg-base-300 p-2 shadow-xl"
             onKeyDown={(event) => event.stopPropagation()}
           >
-            {showCopy && (
+            {!inViewer && (
               <li>
                 <Button
                   variant="menu"
@@ -161,12 +158,14 @@ export default function ScreenshotActions({
                 Open File Location
               </Button>
             </li>
-            <li>
-              <Button variant="menuDanger" onClick={() => runAction(deleteScreenshot)}>
-                <Trash2 size={20} />
-                Delete
-              </Button>
-            </li>
+            {!inViewer && (
+              <li>
+                <Button variant="menuDanger" onClick={() => runAction(deleteScreenshot)}>
+                  <Trash2 size={20} />
+                  Delete
+                </Button>
+              </li>
+            )}
           </ul>,
           document.body,
         )}

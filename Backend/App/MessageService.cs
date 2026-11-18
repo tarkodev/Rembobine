@@ -210,6 +210,7 @@ namespace Segra.Backend.App
                                     catch (Exception ex)
                                     {
                                         Log.Warning(ex, "Failed to delete screenshot");
+                                        await SendFrontendMessage("DeleteScreenshotFailed", new { filePath = screenshotPath });
                                         await ShowModal("Could not delete screenshot", "Check that the file is accessible and try again.", "error");
                                     }
                                 });

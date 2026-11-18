@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Camera, FileUp } from 'lucide-react';
 import Button from '../Components/Button';
 import ContentFilters, { ALL_GAMES, IMPORTED } from '../Components/ContentFilters';
@@ -103,6 +103,10 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
 
   const selectedIndex = filtered.findIndex((screenshot) => screenshot.filePath === selectedPath);
   const selected = filtered[selectedIndex];
+
+  useEffect(() => {
+    if (selectedPath && !screenshots.some((item) => item.filePath === selectedPath)) onSelect(null);
+  }, [screenshots, selectedPath, onSelect]);
 
   useLayoutEffect(() => {
     if (!selected && galleryRef.current) galleryRef.current.scrollTop = scrollPositions.screenshots;

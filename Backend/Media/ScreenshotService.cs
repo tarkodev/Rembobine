@@ -411,7 +411,7 @@ namespace Segra.Backend.Media
             {
                 string directory = Path.GetFullPath(DirectoryPath);
                 if (!Path.IsPathFullyQualified(path) || GetScreenshotContentType(path, directory) == null)
-                    return;
+                    throw new InvalidDataException("Not a library screenshot");
 
                 File.Delete(path);
                 captured = string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), directory, PathComparison);

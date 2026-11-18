@@ -54,7 +54,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../Components/Button';
 import CopyFileButton from '../Components/CopyFileButton';
 import OpenFullSessionButton from '../Components/OpenFullSessionButton';
-import DeleteVideoButton from '../Components/DeleteVideoButton';
+import DeleteMediaButton from '../Components/DeleteMediaButton';
 import MediaInfoBar from '../Components/MediaInfoBar';
 import BookmarkMediaMenu from '../Components/BookmarkMediaMenu';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
@@ -3104,9 +3104,9 @@ export default function VideoComponent({ video }: { video: Content }) {
                     clipTime={video.type === 'Clip' ? currentTime : undefined}
                     duration={duration}
                   />
-                  <DeleteVideoButton video={video} />
                 </div>
               )}
+              {!video.id.startsWith('live-') && <DeleteMediaButton media={video} />}
             </div>
 
             <div className="flex items-center gap-3">

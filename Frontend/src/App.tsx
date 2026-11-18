@@ -68,11 +68,14 @@ function App() {
   const settings = useSettings();
   const appState = useAppState();
   const savedVideo = selectedVideo && appState.content.find((item) => item.id === selectedVideo.id);
-  const removedVideo =
-    (selectedVideo?.type === 'Buffer' || selectedVideo?.type === 'Clip') && !savedVideo;
+  const removedVideo = selectedVideo && !selectedVideo.id.startsWith('live-') && !savedVideo;
+  const savedScreenshot =
+    linkedScreenshot &&
+    appState.screenshots.find((item) => item.filePath === linkedScreenshot.filePath);
+  const removedScreenshot = linkedScreenshot && !savedScreenshot;
   useEffect(() => {
-    if (removedVideo) goBack();
-  }, [removedVideo, selectedVideo?.id, goBack]);
+    if (removedVideo || removedScreenshot) goBack();
+  }, [removedVideo, selectedVideo?.id, removedScreenshot, linkedScreenshot?.filePath, goBack]);
   const needsUsername = !settings.airplaneMode && session && profile?.username?.startsWith('user_');
 
   // Airplane mode hides all cloud features and must not keep a signed-in session.
@@ -119,10 +122,8 @@ function App() {
 
   const renderContent = () => {
     if (linkedScreenshot) {
-      const screenshot =
-        appState.screenshots.find((item) => item.filePath === linkedScreenshot.filePath) ??
-        linkedScreenshot;
-      return <ScreenshotViewer screenshot={screenshot} onBack={goBack} />;
+      if (!savedScreenshot) return null;
+      return <ScreenshotViewer screenshot={savedScreenshot} onBack={goBack} />;
     }
 
     if (selectedVideo) {

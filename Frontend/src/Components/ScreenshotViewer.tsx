@@ -5,6 +5,7 @@ import { MAX_SCREENSHOT_ZOOM, useScreenshotViewport } from '../Hooks/useScreensh
 import { BookmarkType, type Screenshot } from '../Models/types';
 import { getContentFileUrl } from '../Utils/FileUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
+import DeleteMediaButton from './DeleteMediaButton';
 import CopyFileButton from './CopyFileButton';
 import OpenFullSessionButton from './OpenFullSessionButton';
 import MediaInfoBar from './MediaInfoBar';
@@ -217,13 +218,13 @@ export default function ScreenshotViewer({
               bookmarkType={BookmarkType.ScreenshotSaved}
               mediaId={screenshot.isImported ? undefined : screenshot.fileName}
             />
+            <DeleteMediaButton key={`delete-${screenshot.filePath}`} media={screenshot} />
           </div>
           <ScreenshotActions
             key={screenshot.filePath}
             screenshot={screenshot}
-            onDelete={onBack}
             className="btn btn-sm btn-secondary h-10 border-base-400 text-gray-300 hover:text-accent"
-            showCopy={false}
+            inViewer
           />
         </div>
       )}
