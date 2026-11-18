@@ -5,8 +5,6 @@ import { MAX_SCREENSHOT_ZOOM, useScreenshotViewport } from '../Hooks/useScreensh
 import { BookmarkType, type Screenshot } from '../Models/types';
 import { getContentFileUrl } from '../Utils/FileUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
-import DeleteMediaButton from './DeleteMediaButton';
-import CopyFileButton from './CopyFileButton';
 import OpenFullSessionButton from './OpenFullSessionButton';
 import MediaInfoBar from './MediaInfoBar';
 import ScreenshotActions from './ScreenshotActions';
@@ -187,8 +185,8 @@ export default function ScreenshotViewer({
         </div>
       </div>
       {!isFullscreen && (
-        <div className="flex shrink-0 items-center justify-between gap-3 pt-2">
-          <div className="flex items-center gap-3">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3">
             {navigation && (
               <div className="join flex items-center rounded-lg border border-base-400 bg-base-300">
                 <button
@@ -213,19 +211,14 @@ export default function ScreenshotViewer({
                 </button>
               </div>
             )}
-            <CopyFileButton key={screenshot.filePath} filePath={screenshot.filePath} />
             <OpenFullSessionButton
               bookmarkType={BookmarkType.ScreenshotSaved}
               mediaId={screenshot.isImported ? undefined : screenshot.fileName}
             />
-            <DeleteMediaButton key={`delete-${screenshot.filePath}`} media={screenshot} />
           </div>
-          <ScreenshotActions
-            key={screenshot.filePath}
-            screenshot={screenshot}
-            className="btn btn-sm btn-secondary h-10 border-base-400 text-gray-300 hover:text-accent"
-            inViewer
-          />
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <ScreenshotActions key={screenshot.filePath} screenshot={screenshot} inViewer />
+          </div>
         </div>
       )}
     </section>

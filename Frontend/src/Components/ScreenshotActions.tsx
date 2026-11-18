@@ -7,17 +7,17 @@ import type { Screenshot } from '../Models/types';
 import { openFileLocation } from '../Utils/FileUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import Button from './Button';
+import CopyFileButton from './CopyFileButton';
+import DeleteMediaButton from './DeleteMediaButton';
 import RenameScreenshotModal from './RenameScreenshotModal';
 
 interface ScreenshotActionsProps {
   screenshot: Screenshot;
-  className?: string;
   inViewer?: boolean;
 }
 
 export default function ScreenshotActions({
   screenshot,
-  className = 'btn btn-ghost btn-sm btn-circle hover:bg-white/10 active:bg-white/10',
   inViewer = false,
 }: ScreenshotActionsProps) {
   const [open, setOpen] = useState(false);
@@ -82,6 +82,11 @@ export default function ScreenshotActions({
     action();
   };
 
+  const renameScreenshot = () =>
+    openModal(<RenameScreenshotModal screenshot={screenshot} onClose={closeModal} />, {
+      size: 'sm',
+    });
+  const showLocation = () => openFileLocation(screenshot.filePath);
   const deleteScreenshot = () =>
     confirmDelete({
       title: 'Delete screenshot?',
@@ -91,12 +96,29 @@ export default function ScreenshotActions({
       },
     });
 
+  if (inViewer) {
+    return (
+      <>
+        <CopyFileButton filePath={screenshot.filePath} />
+        <Button size="sm" className="h-10 hover:text-accent" onClick={renameScreenshot}>
+          <PenLine size={20} />
+          Rename
+        </Button>
+        <Button size="sm" className="h-10 hover:text-accent" onClick={showLocation}>
+          <FolderOpen size={20} />
+          Open File Location
+        </Button>
+        <DeleteMediaButton media={screenshot} />
+      </>
+    );
+  }
+
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
-        className={className}
+        className="btn btn-ghost btn-sm btn-circle hover:bg-white/10 active:bg-white/10"
         aria-label="Screenshot actions"
         title="Screenshot actions"
         aria-expanded={open}
@@ -114,58 +136,37 @@ export default function ScreenshotActions({
             className="menu fixed top-0 left-0 z-1000 w-52 rounded-box border border-base-400 bg-base-300 p-2 shadow-xl"
             onKeyDown={(event) => event.stopPropagation()}
           >
-            {!inViewer && (
-              <li>
-                <Button
-                  variant="menu"
-                  onClick={() =>
-                    runAction(() =>
-                      sendMessageToBackend('CopyFileToClipboard', {
-                        FilePath: screenshot.filePath,
-                      }),
-                    )
-                  }
-                >
-                  <Copy size={20} />
-                  Copy
-                </Button>
-              </li>
-            )}
             <li>
               <Button
                 variant="menu"
                 onClick={() =>
                   runAction(() =>
-                    openModal(
-                      <RenameScreenshotModal screenshot={screenshot} onClose={closeModal} />,
-                      {
-                        size: 'sm',
-                      },
-                    ),
+                    sendMessageToBackend('CopyFileToClipboard', { FilePath: screenshot.filePath }),
                   )
                 }
               >
+                <Copy size={20} />
+                Copy
+              </Button>
+            </li>
+            <li>
+              <Button variant="menu" onClick={() => runAction(renameScreenshot)}>
                 <PenLine size={20} />
                 Rename
               </Button>
             </li>
             <li>
-              <Button
-                variant="menu"
-                onClick={() => runAction(() => openFileLocation(screenshot.filePath))}
-              >
+              <Button variant="menu" onClick={() => runAction(showLocation)}>
                 <FolderOpen size={20} />
                 Open File Location
               </Button>
             </li>
-            {!inViewer && (
-              <li>
-                <Button variant="menuDanger" onClick={() => runAction(deleteScreenshot)}>
-                  <Trash2 size={20} />
-                  Delete
-                </Button>
-              </li>
-            )}
+            <li>
+              <Button variant="menuDanger" onClick={() => runAction(deleteScreenshot)}>
+                <Trash2 size={20} />
+                Delete
+              </Button>
+            </li>
           </ul>,
           document.body,
         )}
