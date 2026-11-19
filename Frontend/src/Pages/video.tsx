@@ -1818,7 +1818,9 @@ export default function VideoComponent({ video }: { video: Content }) {
   const getVideoPath = (): string => {
     // Each live open serves a different length, so it needs its own URL for the media cache
     const live = video.id.startsWith('live-') ? `&live=${video.id}` : '';
-    return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=${video.type.toLowerCase()}${live}`;
+    // Start decoding at the linked position so a paused player never presents frame zero first.
+    const start = requestedTime > 0 && Number.isFinite(requestedTime) ? `#t=${requestedTime}` : '';
+    return `http://localhost:2222/api/content?input=${encodeURIComponent(video.filePath)}&type=${video.type.toLowerCase()}${live}${start}`;
   };
 
   // Get audio waveform URL - waveforms are stored in AppData
