@@ -12,7 +12,7 @@ namespace Segra.Backend.Media
     {
         public static async Task HandleImportFile(JsonElement parameters)
         {
-            using var work = BackgroundWork.Begin();
+            using var work = BackgroundWork.Begin(writesLibrary: false);
             int importId = Guid.NewGuid().GetHashCode();
 
             try
@@ -31,26 +31,12 @@ namespace Segra.Backend.Media
                     return;
                 }
 
-                Content.ContentType contentType;
-
-                switch (sectionId)
+                if (FolderNames.GetVideoTypeForSection(sectionId) is not { } contentType ||
+                    (contentType is Content.ContentType.Clip or Content.ContentType.Highlight && !Settings.Instance.ShowImportInClipsAndHighlights))
                 {
-                    case "sessions":
-                        contentType = Content.ContentType.Session;
-                        break;
-                    case "replayBuffer":
-                        contentType = Content.ContentType.Buffer;
-                        break;
-                    case "clips" when Settings.Instance.ShowImportInClipsAndHighlights:
-                        contentType = Content.ContentType.Clip;
-                        break;
-                    case "highlights" when Settings.Instance.ShowImportInClipsAndHighlights:
-                        contentType = Content.ContentType.Highlight;
-                        break;
-                    default:
-                        Log.Error($"Invalid sectionId: {sectionId}");
-                        await MessageService.ShowModal("Import Error", $"Invalid section ID: {sectionId}", "error");
-                        return;
+                    Log.Error($"Invalid sectionId: {sectionId}");
+                    await MessageService.ShowModal("Import Error", $"Invalid section ID: {sectionId}", "error");
+                    return;
                 }
 
                 // The platform dialog runs on its own thread (STA on Windows / zenity on Linux).

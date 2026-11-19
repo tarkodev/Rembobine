@@ -287,6 +287,7 @@ namespace Segra.Backend.Recorder
 
         private static async Task<bool> SaveReplayBuffer(Recording.PendingMediaBookmark? bookmark)
         {
+            using var work = BackgroundWork.Begin();
             using var pendingBookmark = bookmark;
             // One save at a time: OBS defers a save requested while a previous one is still
             // muxing, and its 'saved' signal carries no identity, so correlation is only sound
@@ -2546,7 +2547,7 @@ namespace Segra.Backend.Recorder
                                 savedSessions.Add((sessionContentId, bookmarks));
                             await ContentService.CreateThumbnail(filePath, Content.ContentType.Session, sessionContentId);
                             // Decoding a long session's audio takes seconds, so it doesn't hold up the finishing state
-                            var waveformWork = BackgroundWork.Begin();
+                            var waveformWork = BackgroundWork.Begin(writesLibrary: false);
                             string? waveformId = sessionContentId;
                             _ = Task.Run(async () =>
                             {

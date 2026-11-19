@@ -61,20 +61,12 @@ namespace Segra.Backend.Media
                     Directory.CreateDirectory(metadataFolderPath);
                 }
 
-                // Reuse the id when this file is already tracked, so a repeat call rewrites that entry
-                // instead of adding a second one for the same video.
-                string? existingId = AppState.Instance.Content.FirstOrDefault(c =>
-                    c.Type == type &&
-                    string.Equals(c.FilePath, filePath, StringComparison.OrdinalIgnoreCase))?.Id;
-
-                string id = string.IsNullOrEmpty(existingId) ? NewContentId() : existingId;
-                string metadataFilePath = FolderNames.GetMetadataFilePath(type, id);
                 var (displaySize, sizeKb) = GetFileSize(filePath);
 
                 var duration = await GetVideoDurationAsync(filePath);
                 var metadataContent = new Content
                 {
-                    Id = id,
+                    LibraryFileIdentity = LibraryVideoIndex.ReadIdentity(filePath),
                     Type = type,
                     Title = title ?? string.Empty,
                     Game = game,
@@ -95,13 +87,22 @@ namespace Segra.Backend.Media
                     Webcam = webcam
                 };
 
-                string metadataJson = JsonSerializer.Serialize(metadataContent, _jsonOptions);
-
-                await File.WriteAllTextAsync(metadataFilePath, metadataJson);
-                Log.Information($"Metadata file created at: {metadataFilePath}");
+                await MetadataWriteLock.WaitAsync();
+                try
+                {
+                    // Both the folder sync and a recording/import finalizer may discover the
+                    // same video before AppState refreshes. Keep a single on-disk claim.
+                    metadataContent.Id = FindContentIdForFilePath(type, filePath) ?? NewContentId();
+                    await WriteMetadataAtomically(FolderNames.GetMetadataFilePath(type, metadataContent.Id), metadataContent);
+                    NotifyCatalogChanged();
+                }
+                finally
+                {
+                    MetadataWriteLock.Release();
+                }
 
                 await EmbeddedMetadataService.EmbedAsync(metadataContent);
-                return id;
+                return metadataContent.Id;
             }
             catch (Exception ex)
             {
@@ -172,8 +173,10 @@ namespace Segra.Backend.Media
                 try
                 {
                     var existing = JsonSerializer.Deserialize<Content>(File.ReadAllText(existingMetadataFilePath));
-                    if (existing == null || string.IsNullOrEmpty(existing.Id)) continue;
-                    if (string.Equals(PathUtils.Normalize(existing.FilePath), normalizedPath, StringComparison.OrdinalIgnoreCase))
+                    if (existing == null || existing.Type != type || string.IsNullOrEmpty(existing.Id) ||
+                        existing.Id != Path.GetFileNameWithoutExtension(existingMetadataFilePath)) continue;
+                    var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+                    if (string.Equals(PathUtils.Normalize(existing.FilePath), normalizedPath, comparison))
                         return existing.Id;
                 }
                 catch
@@ -225,11 +228,29 @@ namespace Segra.Backend.Media
         }
 
         // Serializes sidecar read-modify-write so concurrent writers don't drop each other's changes; update actions must not re-enter
-        private static readonly SemaphoreSlim _metadataWriteLock = new(1, 1);
+        internal static readonly SemaphoreSlim MetadataWriteLock = new(1, 1);
+        private static long _metadataCreationVersion;
+        internal static long MetadataCreationVersion => Interlocked.Read(ref _metadataCreationVersion);
+        internal static long NotifyCatalogChanged() => Interlocked.Increment(ref _metadataCreationVersion);
+
+        internal static async Task WriteMetadataAtomically(string path, Content content)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(content, _jsonOptions));
+                File.Move(temporary, path, true);
+            }
+            finally
+            {
+                File.Delete(temporary);
+            }
+        }
 
         public static async Task<Content?> UpdateMetadataFile(string metadataFilePath, Action<Content> updateAction)
         {
-            await _metadataWriteLock.WaitAsync();
+            await MetadataWriteLock.WaitAsync();
             try
             {
                 if (!File.Exists(metadataFilePath))
@@ -249,9 +270,7 @@ namespace Segra.Backend.Media
 
                 updateAction(content);
 
-                string updatedJson = JsonSerializer.Serialize(content, _jsonOptions);
-
-                await File.WriteAllTextAsync(metadataFilePath, updatedJson);
+                await WriteMetadataAtomically(metadataFilePath, content);
 
                 return content;
             }
@@ -262,7 +281,7 @@ namespace Segra.Backend.Media
             }
             finally
             {
-                _metadataWriteLock.Release();
+                MetadataWriteLock.Release();
             }
         }
 

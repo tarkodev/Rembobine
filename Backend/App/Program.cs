@@ -55,6 +55,7 @@ namespace Segra.Backend.App
 #endif
         public static bool IsFirstRun { get; private set; } = false;
         private static readonly AutoResetEvent ShowWindowEvent = new(false);
+        private static readonly CancellationTokenSource LibrarySyncShutdown = new();
         public static bool hasLoadedInitialSettings = false;
         public static PhotinoWindow? Window { get; private set; }
         private static PhotinoApplication? App;
@@ -331,6 +332,12 @@ namespace Segra.Backend.App
 
                 // Run data migrations
                 Task.Run(MigrationService.RunMigrations);
+                _ = Task.Run(async () =>
+                {
+                    await MigrationService.WaitForMigrationsAsync();
+                    using var sync = new LibraryFolderSync();
+                    await sync.RunAsync(LibrarySyncShutdown.Token);
+                });
 
                 // Start WebSocket and Load Settings
                 Task.Run(MessageService.StartWebsocket);
@@ -652,6 +659,7 @@ namespace Segra.Backend.App
         private static void Shutdown()
         {
             Log.Information("Application shutting down.");
+            LibrarySyncShutdown.Cancel();
 
             // Cancel any pending debounced window-state save; the synchronous save below is final.
             _windowStateSaveDebounceCts?.Cancel();

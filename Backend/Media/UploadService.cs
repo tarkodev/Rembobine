@@ -109,7 +109,7 @@ namespace Segra.Backend.Media
         public static async Task HandleUploadContent(JsonElement message)
         {
             if (!Settings.Instance.EnableAccountAndSharing) return;
-            using var work = BackgroundWork.Begin();
+            using var work = BackgroundWork.Begin(writesLibrary: false);
             // Same file can be uploaded more than once at a time, so each upload gets its own id
             string uploadId = Guid.NewGuid().ToString("N");
             string fileName = "";

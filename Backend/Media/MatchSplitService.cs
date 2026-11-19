@@ -172,7 +172,7 @@ namespace Segra.Backend.Media
                 }
 
                 await ContentService.CreateThumbnail(part.FilePath!, Content.ContentType.Session, id);
-                var waveformWork = BackgroundWork.Begin();
+                var waveformWork = BackgroundWork.Begin(writesLibrary: false);
                 string partPath = part.FilePath!;
                 _ = Task.Run(async () =>
                 {
@@ -195,6 +195,13 @@ namespace Segra.Backend.Media
 
         private static readonly object _originalLock = new();
         private static (string FilePath, string? WebcamPath)? _pendingOriginal;
+
+        internal static bool IsPendingDeletion(string path)
+        {
+            lock (_originalLock)
+                return string.Equals(_pendingOriginal?.FilePath, path,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
 
         // A recording open in the player stays until the player leaves it
         public static void DeleteOriginal(string filePath, string? webcamPath)

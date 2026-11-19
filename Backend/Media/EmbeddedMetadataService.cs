@@ -1,6 +1,7 @@
 using Serilog;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -151,7 +152,19 @@ namespace Segra.Backend.Media
             {
                 using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 Span<byte> header = stackalloc byte[16];
-                long pos = 0;
+                // OBS reserves a 16-byte, zero-filled free box immediately after ftyp for its
+                // final mdat header. A regular fragmented MP4 can contain perfectly valid moofs.
+                if (fs.Length < 8) return false;
+                fs.ReadExactly(header[..8]);
+                uint ftypSize = BinaryPrimitives.ReadUInt32BigEndian(header);
+                if (!header.Slice(4, 4).SequenceEqual("ftyp"u8) || ftypSize < 8 || fs.Length - ftypSize < 16)
+                    return false;
+                fs.Position = ftypSize;
+                fs.ReadExactly(header);
+                if (BinaryPrimitives.ReadUInt32BigEndian(header) != 16 || !header.Slice(4, 4).SequenceEqual("free"u8)
+                    || BinaryPrimitives.ReadUInt64BigEndian(header[8..]) != 0)
+                    return false;
+                long pos = ftypSize + 16L;
                 // A crash usually leaves a truncated last box, so stop at the first one that doesn't fit
                 while (fs.Length - pos >= 16)
                 {
@@ -593,6 +606,38 @@ namespace Segra.Backend.Media
 
         private static int MediaIndex(FileStream fs, List<TopBox> top) =>
             top.FindIndex(b => b.Type == "mdat" && !IsOurMdat(fs, b));
+
+        // Sample the encoded media itself. Adding chapters, moving the moov index, or editing
+        // embedded bookmarks changes container bytes but leaves these samples untouched.
+        internal static string? ReadLibraryFileIdentity(FileStream stream)
+        {
+            var boxes = ScanTopLevel(stream);
+            if (boxes == null || boxes.Count(b => b.Type == "moov") != 1)
+                return null;
+
+            var media = boxes.Where(b => b.Type == "mdat" && b.Size > b.HeaderSize && !IsOurMdat(stream, b)).ToList();
+            if (media.Count == 0)
+                return null;
+
+            var largest = media.MaxBy(b => b.Size - b.HeaderSize);
+            long length = largest.Size - largest.HeaderSize;
+            Span<byte> sample = stackalloc byte[(int)Math.Min(length, 4096)];
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            Span<byte> size = stackalloc byte[8];
+            foreach (var box in media)
+            {
+                BinaryPrimitives.WriteInt64BigEndian(size, box.Size - box.HeaderSize);
+                hash.AppendData(size);
+            }
+            long last = length - sample.Length;
+            foreach (long offset in new[] { 0L, last / 2, last })
+            {
+                stream.Position = largest.Offset + largest.HeaderSize + offset;
+                stream.ReadExactly(sample);
+                hash.AppendData(sample);
+            }
+            return Convert.ToHexString(hash.GetHashAndReset());
+        }
 
         // A file without media data counts as index first, there's nothing to move
         private static bool IsIndexFirst(FileStream fs, List<TopBox> top)

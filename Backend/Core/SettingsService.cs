@@ -1255,7 +1255,9 @@ namespace Segra.Backend.Core
                     }
                 }
 
-                content = content.OrderByDescending(v => v.CreatedAt).ToList();
+                var pathComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+                content = content.OrderByDescending(v => v.CreatedAt).ThenBy(v => v.Id, StringComparer.Ordinal)
+                    .DistinctBy(v => v.FilePath, pathComparer).DistinctBy(v => v.Id).ToList();
 
                 if (invalidMetadataCount > 0 && Interlocked.Exchange(ref _invalidMetadataLogged, 1) == 0)
                     Log.Warning($"Skipped {invalidMetadataCount} metadata files with invalid content or a missing video");

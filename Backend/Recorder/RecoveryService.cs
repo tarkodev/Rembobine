@@ -175,7 +175,11 @@ namespace Segra.Backend.Recorder
 
                 foreach (var videoFile in videoFiles)
                 {
-                    if (!trackedPaths.Contains(PathUtils.Normalize(videoFile)))
+                    // Ordinary library drops are indexed in place. Keep the recovery prompt for
+                    // crashed OBS recordings that need an explicit remux.
+                    if (!trackedPaths.Contains(PathUtils.Normalize(videoFile))
+                        && !LibraryFolderSync.IsRecordingPath(videoFile)
+                        && EmbeddedMetadataService.IsUnfinishedFragmented(videoFile))
                     {
                         // Detect game from parent folder name (e.g., "Full Sessions/PUBG/video.mp4" -> "PUBG")
                         string? folderGame = null;

@@ -5,7 +5,7 @@ import { Content, ContentType } from '../Models/types';
 import { useScroll } from '../Context/ScrollContext';
 import { useLayoutEffect, useRef, useState, useMemo, useEffect, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { FileUp, Merge, Trash2 } from 'lucide-react';
+import { Merge, Trash2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import ContentFilters, { ALL_GAMES, matchesGameFilter, SortOption } from './ContentFilters';
@@ -13,6 +13,7 @@ import { useSettings } from '../Context/SettingsContext';
 import { useModal } from '../Context/ModalContext';
 import { useImports } from '../Context/ImportContext';
 import Button from './Button';
+import LibraryFolderActions from './LibraryFolderActions';
 import MergeModal from './MergeModal';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import { useLibraryGames } from '../Hooks/useLibraryGames';
@@ -540,22 +541,16 @@ export default function ContentPage({
       onScroll={handleScroll}
       onMouseDown={handleMarqueeMouseDown}
     >
-      <div className="flex justify-between items-center mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-[1.75rem] font-bold">{title}</h1>
         </div>
-        <div className="flex items-center gap-2">
-          {showImport && (
-            <Button
-              variant="primary"
-              size="sm"
-              className="no-animation h-8 gap-1"
-              onClick={() => sendMessageToBackend('ImportFile', { sectionId })}
-            >
-              <FileUp size={16} />
-              Import
-            </Button>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          <LibraryFolderActions
+            sectionId={sectionId}
+            filter={gameOptions.find((game) => game.key === selectedGame)}
+            showImport={showImport}
+          />
           <ContentFilters
             games={gameOptions}
             totalCount={contentItems.length}

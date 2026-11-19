@@ -186,6 +186,9 @@ namespace Segra.Backend.Platform.Windows
             Process.Start("explorer.exe", $"/select,\"{selectPath}\"");
         }
 
+        public void OpenFolder(string folderPath) =>
+            Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { Path.GetFullPath(folderPath) } });
+
         public void OpenUrl(string url) =>
             Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
 

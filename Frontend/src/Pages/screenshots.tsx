@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Camera, FileUp } from 'lucide-react';
-import Button from '../Components/Button';
+import { Camera } from 'lucide-react';
+import LibraryFolderActions from '../Components/LibraryFolderActions';
 import ContentFilters, { ALL_GAMES, matchesGameFilter } from '../Components/ContentFilters';
 import type { SortOption } from '../Components/ContentFilters';
 import LibraryMediaMetadata from '../Components/LibraryMediaMetadata';
@@ -12,7 +12,6 @@ import { useLibraryGames } from '../Hooks/useLibraryGames';
 import type { Screenshot } from '../Models/types';
 import { resolveScreenshot } from '../Utils/ScreenshotUtils';
 import { getContentFileUrl } from '../Utils/FileUtils';
-import { sendMessageToBackend } from '../Utils/MessageUtils';
 
 const SECTION_ID = 'screenshots';
 const SCREENSHOT_SORTS: SortOption[] = ['newest', 'oldest', 'size', 'game'];
@@ -104,15 +103,10 @@ export default function Screenshots({ selectedScreenshot, onSelect }: Screenshot
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[1.75rem] font-bold">Screenshots</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            className="no-animation h-8 gap-1"
-            onClick={() => sendMessageToBackend('ImportFile', { sectionId: SECTION_ID })}
-          >
-            <FileUp size={16} />
-            Import
-          </Button>
+          <LibraryFolderActions
+            sectionId={SECTION_ID}
+            filter={gameOptions.find((game) => game.key === gameFilter)}
+          />
           <ContentFilters
             games={gameOptions}
             totalCount={screenshots.length}

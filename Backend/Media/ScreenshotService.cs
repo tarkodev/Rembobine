@@ -41,7 +41,7 @@ namespace Segra.Backend.Media
         private sealed record Capture(string MediaId, string? Game, string? PendingPath = null, string? PendingTitle = null);
 
         private static string DirectoryPath => Path.Combine(Settings.Instance.ContentFolder, FolderNames.Screenshots);
-        private const string ImportedFolderName = "Imported";
+        internal const string ImportedFolderName = "Imported";
         private const string TitlesFileName = ".titles.json";
         private const string GamesFileName = ".games.json";
         private static StringComparison PathComparison =>
@@ -161,7 +161,7 @@ namespace Segra.Backend.Media
 
         private static async Task<string> SaveAsync(string? game, Func<string, Task> writePng)
         {
-            using var work = BackgroundWork.Begin();
+            using var work = BackgroundWork.Begin(writesLibrary: false);
             string directory = Path.GetFullPath(DirectoryPath);
             string id = Guid.NewGuid().ToString("N");
             string stem = DateTime.Now.ToString(CaptureDateFormat, CultureInfo.InvariantCulture);
@@ -188,11 +188,11 @@ namespace Segra.Backend.Media
             return prefix.Length == 0 ? "Screenshot" : prefix;
         }
 
-        private static string GetCaptureFolder(string root, string? game)
-        {
-            if (!Settings.Instance.GameSubfolders)
-                return root;
+        private static string GetCaptureFolder(string root, string? game) =>
+            Settings.Instance.GameSubfolders ? GetGameFolder(root, game) : root;
 
+        internal static string GetGameFolder(string root, string? game)
+        {
             // Imported is reserved for pictures picked from disk, including copies of native captures.
             string folderName = StorageService.SanitizeGameNameForFolder(game?.Replace('\\', '_') ?? "Unknown");
             if (folderName.Length > 255 || (!OperatingSystem.IsWindows() && System.Text.Encoding.UTF8.GetByteCount(folderName) > 255))

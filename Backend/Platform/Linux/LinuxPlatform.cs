@@ -237,6 +237,9 @@ namespace Segra.Backend.Platform.Linux
                 LinuxProcess.Start("xdg-open", $"\"{dir}\"");
         }
 
+        public void OpenFolder(string folderPath) =>
+            Process.Start(new ProcessStartInfo("xdg-open") { ArgumentList = { Path.GetFullPath(folderPath) } });
+
         public void OpenUrl(string url) => LinuxProcess.Start("xdg-open", $"\"{url}\"");
 
         public void CopyFileToClipboard(string filePath)

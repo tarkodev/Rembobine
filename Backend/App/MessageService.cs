@@ -265,6 +265,10 @@ namespace Segra.Backend.App
                                 Log.Warning("FilePath parameter not found in OpenFileLocation message");
                             }
                             break;
+                        case "OpenLibraryFolder":
+                            if (root.TryGetProperty("Parameters", out var folderParameters))
+                                await OpenLibraryFolder(folderParameters);
+                            break;
                         case "CopyFileToClipboard":
                             root.TryGetProperty("Parameters", out JsonElement copyFileParams);
                             if (copyFileParams.TryGetProperty("FilePath", out JsonElement copyFilePath))
@@ -916,6 +920,45 @@ namespace Segra.Backend.App
             }
         }
 #endif
+
+        private static async Task OpenLibraryFolder(JsonElement parameters)
+        {
+            try
+            {
+                string? section = parameters.GetProperty("sectionId").GetString();
+                string? game = parameters.TryGetProperty("game", out var gameValue) ? gameValue.GetString() : null;
+                string contentRoot = Path.GetFullPath(Settings.Instance.ContentFolder);
+                string sectionFolder;
+                string? filterFolder = null;
+                if (section == "screenshots")
+                {
+                    sectionFolder = Path.Combine(contentRoot, FolderNames.Screenshots);
+                    if (parameters.TryGetProperty("imported", out var imported) && imported.ValueKind == JsonValueKind.True)
+                        filterFolder = Path.Combine(sectionFolder, ScreenshotService.ImportedFolderName);
+                    else if (!string.IsNullOrEmpty(game))
+                        filterFolder = ScreenshotService.GetGameFolder(sectionFolder, game);
+                }
+                else if (FolderNames.GetVideoTypeForSection(section) is { } type)
+                {
+                    sectionFolder = FolderNames.GetVideoFolderPath(contentRoot, type);
+                    if (!string.IsNullOrEmpty(game))
+                        filterFolder = Path.Combine(sectionFolder, StorageService.SanitizeGameNameForFolder(game.Replace('\\', '_')));
+                }
+                else
+                {
+                    throw new ArgumentException($"Unknown library section: {section}");
+                }
+
+                // Empty sections may not have a folder until their first recording or import.
+                Directory.CreateDirectory(sectionFolder);
+                PlatformServices.Dialogs.OpenFolder(Directory.Exists(filterFolder) ? filterFolder! : sectionFolder);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not open library folder");
+                await ShowModal("Could not open folder", "Check that your content folder is accessible and try again.", "error");
+            }
+        }
 
         private static async Task HandleCreateAiClip(JsonElement message)
         {

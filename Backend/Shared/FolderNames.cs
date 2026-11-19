@@ -38,6 +38,15 @@ namespace Segra.Backend.Shared
         /// </summary>
         public static string CacheFolder => PathUtils.Normalize(Settings.Instance.CacheFolder);
 
+        public static Content.ContentType? GetVideoTypeForSection(string? sectionId) => sectionId switch
+        {
+            "sessions" => Content.ContentType.Session,
+            "replayBuffer" => Content.ContentType.Buffer,
+            "clips" => Content.ContentType.Clip,
+            "highlights" => Content.ContentType.Highlight,
+            _ => null
+        };
+
         /// <summary>
         /// Gets the video folder name for a content type.
         /// </summary>
