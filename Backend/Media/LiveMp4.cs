@@ -80,7 +80,7 @@ namespace Segra.Backend.Media
 
         private static readonly HashSet<string> _containers = new() { "moov", "trak", "mdia", "minf", "stbl", "edts", "mvex", "moof", "traf" };
 
-        public static LiveMp4 Build(string path)
+        public static LiveMp4? TryBuild(string path)
         {
             using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             long fileLength = fs.Length;
@@ -116,7 +116,7 @@ namespace Segra.Backend.Media
             }
 
             if (moov == null || tracks == null || dataStart < 0)
-                throw new InvalidDataException("The recording has no complete fragments yet");
+                return null;
 
             foreach (var track in tracks.Values)
                 FillMissingDurations(track);

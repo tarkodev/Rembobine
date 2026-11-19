@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  PreRecording,
-  Recording,
-  GameResponse,
-  GameSetting,
-  Display,
-  Content,
-} from '../Models/types';
-import { useSelectedVideo } from '../Context/SelectedVideoContext';
+import { PreRecording, Recording, GameResponse, GameSetting, Display } from '../Models/types';
 import { Ellipsis, Ban, Eye, EyeOff } from 'lucide-react';
 import { Gamepad2, Monitor, AppWindow } from 'lucide';
 import { MorphIcon } from 'morphicons/react';
@@ -36,7 +28,6 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
   const lastFetchedGameRef = useRef<string | null>(null);
   const [showShockwave, setShowShockwave] = useState(false);
   const [hasPreviewFrame, setHasPreviewFrame] = useState(false);
-  const { setSelectedVideo } = useSelectedVideo();
 
   const gameName = preRecording ? preRecording.game : recording?.game;
   const gameListEntry = state.gameList.find((g) => g.name === gameName);
@@ -116,13 +107,11 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
     sendMessageToBackend('StopRecording');
   }, [gameListEntry, settings.games, updateSettings]);
 
-  // Listen for bookmarks, recording snapshots, and preview frames.
+  // Listen for bookmarks and preview frames.
   useEffect(() => {
     const handleMessage = (event: CustomEvent) => {
       const method = event.detail?.method;
-      if (method === 'RecordingSnapshotReady') {
-        setSelectedVideo(event.detail.content as Content);
-      } else if (method === 'BookmarkCreated' || method === 'ReplayBufferSaveStarted') {
+      if (method === 'BookmarkCreated' || method === 'ReplayBufferSaveStarted') {
         setShowShockwave(true);
         setTimeout(() => setShowShockwave(false), 600);
       } else if (method === 'RecordingPreviewFrame') {
@@ -139,7 +128,7 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ recording, preRecording }
     return () => {
       window.removeEventListener('websocket-message', handleMessage as EventListener);
     };
-  }, [setSelectedVideo]);
+  }, []);
 
   // Hide stale frames on enable, but keep the last frame visible through the exit animation.
   useEffect(() => {

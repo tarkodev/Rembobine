@@ -1418,12 +1418,17 @@ export default function VideoComponent({ video }: { video: Content }) {
     try {
       const canvas = drawCurrentFrame();
       if (!canvas) throw new Error('No video frame available');
+      const url = new URL('http://localhost:2222/api/screenshots');
+      url.searchParams.set('game', video.game);
+      if (video.type === 'Buffer') {
+        url.searchParams.set('replayId', video.id);
+        url.searchParams.set('frameTime', String(v.currentTime));
+      }
       const image = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, 'image/png'),
       );
       if (!image) throw new Error('Could not create PNG');
 
-      const url = 'http://localhost:2222/api/screenshots?game=' + encodeURIComponent(video.game);
       const response = await fetch(url, { method: 'POST', body: image });
       if (!response.ok) throw new Error(`Screenshot save failed (${response.status})`);
       setScreenshotStatus('saved');
@@ -2073,7 +2078,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     const ids = new Set(snapshot.map((b) => b.id));
     const added = recording?.bookmarks?.filter(
       (b) =>
-        b.type === BookmarkType.ClipSaved &&
+        (b.type === BookmarkType.ClipSaved || b.type === BookmarkType.ScreenshotSaved) &&
         !ids.has(b.id) &&
         getBookmarkMedia(b) &&
         timeStringToSeconds(b.time) <= duration,

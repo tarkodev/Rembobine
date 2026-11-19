@@ -1,4 +1,5 @@
 using Serilog;
+using System.Globalization;
 using System.Net;
 using System.Web;
 using Segra.Backend.Auth;
@@ -310,8 +311,9 @@ namespace Segra.Backend.Api
             try
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                double? frameTime = double.TryParse(request.QueryString["frameTime"], CultureInfo.InvariantCulture, out var seconds) ? seconds : null;
                 await ScreenshotService.SavePlayerFrameAsync(request.InputStream, request.ContentLength64,
-                    request.QueryString["game"], timeout.Token);
+                    request.QueryString["game"], timeout.Token, request.QueryString["replayId"], frameTime);
                 response.StatusCode = (int)HttpStatusCode.Created;
             }
             catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)

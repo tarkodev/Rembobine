@@ -145,7 +145,11 @@ namespace Segra.Backend.App
                             _ = Task.Run(() => HandleCreateClip(clipParameterElement));
                             break;
                         case "OpenRecordingSnapshot":
-                            _ = Task.Run(HandleOpenRecordingSnapshot);
+                            var snapshotParams = root.GetProperty("Parameters");
+                            string snapshotPath = snapshotParams.GetProperty("filePath").GetString()!;
+                            int snapshotRequestId = snapshotParams.GetProperty("requestId").GetInt32();
+                            double bookmarkTime = snapshotParams.TryGetProperty("bookmarkTime", out var time) ? time.GetDouble() : 0;
+                            _ = Task.Run(() => HandleOpenRecordingSnapshot(snapshotPath, snapshotRequestId, bookmarkTime));
                             break;
                         case "VideoViewState":
                             if (root.TryGetProperty("Parameters", out JsonElement videoViewElement) &&
@@ -983,28 +987,34 @@ namespace Segra.Backend.App
 
         // Builds a normal MP4 index for the in-progress Hybrid MP4 session, served without copying the file.
         // A session that is still being saved is complete on disk and served as is.
-        private static async Task HandleOpenRecordingSnapshot()
+        private static async Task HandleOpenRecordingSnapshot(string expectedPath, int requestId, double bookmarkTime)
         {
-            var recording = AppState.Instance.Recording ?? OBSService.FinishingSession;
-            bool finished = AppState.Instance.Recording == null;
+            var recording = AppState.Instance.Recording;
+            bool finished = recording?.FilePath != expectedPath;
+            if (finished)
+                recording = OBSService.FinishingSession;
             string? source = recording?.FilePath;
-            if (recording == null || string.IsNullOrEmpty(source) || !File.Exists(source))
+            if (recording == null || string.IsNullOrEmpty(source) || source != expectedPath || !File.Exists(source))
             {
-                await SendFrontendMessage("RecordingSnapshotFailed", new { message = "No session recording is in progress." });
+                var saved = AppState.Instance.Content.FirstOrDefault(c => c.Type == Content.ContentType.Session && c.FilePath == expectedPath);
+                if (saved != null)
+                    await SendFrontendMessage("RecordingSnapshotReady", new { requestId, session = saved });
+                else
+                    await SendFrontendMessage("RecordingSnapshotFailed", new { requestId, message = "This recording is no longer available." });
                 return;
-            }
-
-            string waveformDir = FolderNames.GetWaveformsFolderPath(Content.ContentType.Session);
-            if (Directory.Exists(waveformDir))
-            {
-                foreach (var old in Directory.GetFiles(waveformDir, "live-*.peaks.json"))
-                {
-                    try { File.Delete(old); } catch { }
-                }
             }
 
             try
             {
+                string waveformDir = FolderNames.GetWaveformsFolderPath(Content.ContentType.Session);
+                if (Directory.Exists(waveformDir))
+                {
+                    foreach (var old in Directory.GetFiles(waveformDir, "live-*.peaks.json"))
+                    {
+                        try { File.Delete(old); } catch { }
+                    }
+                }
+
                 long dataLength;
                 TimeSpan duration;
                 if (finished)
@@ -1015,7 +1025,16 @@ namespace Segra.Backend.App
                 else
                 {
                     var started = DateTime.Now;
-                    var live = await Task.Run(() => LiveMp4.Build(source));
+                    var live = LiveMp4.TryBuild(source);
+                    // A just-saved bookmark can be in the fragment OBS is still writing.
+                    for (int retry = 0; retry < 3 && (live == null || live.Duration.TotalSeconds < bookmarkTime); retry++)
+                    {
+                        await Task.Delay(500);
+                        if (!ReferenceEquals(recording, AppState.Instance.Recording)) break;
+                        live = LiveMp4.TryBuild(source);
+                    }
+                    if (live == null)
+                        throw new InvalidDataException("The recording has no complete fragments yet");
                     LiveMp4.Current = live;
                     Log.Information($"Live index built in {(DateTime.Now - started).TotalMilliseconds:F0} ms ({live.Duration}, {live.Header.Length / 1024} KB index)");
                     dataLength = live.DataLength;
@@ -1038,10 +1057,13 @@ namespace Segra.Backend.App
                     AudioTrackNames = recording.AudioTrackNames,
                     AudioTrackTypes = recording.AudioTrackTypes,
                 };
-                LiveContent = content;
                 lock (_viewCounts)
+                {
+                    LiveContent = content;
                     _openingFilePath = PathUtils.Normalize(source);
-                await SendFrontendMessage("RecordingSnapshotReady", content);
+                }
+                await SendFrontendMessage("RecordingSnapshotReady", new { requestId, session = content });
+                _ = ReleaseUnopenedSnapshot(content);
 
                 // The video page refetches its waveform on WaveformCreated
                 if (Settings.Instance.ShowAudioWaveformInTimeline)
@@ -1050,9 +1072,22 @@ namespace Segra.Backend.App
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to open the session being recorded");
-                await SendFrontendMessage("RecordingSnapshotFailed", new { message = "Could not open the recording." });
+                await SendFrontendMessage("RecordingSnapshotFailed", new { requestId, message = "Could not open the recording." });
                 await ShowModal("Could not open the recording", "The session being recorded could not be opened. Check the log for more details.", "error");
             }
+        }
+
+        // The requesting viewer may have closed before its snapshot arrived.
+        private static async Task ReleaseUnopenedSnapshot(Content snapshot)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            lock (_viewCounts)
+            {
+                if (_openingFilePath == null || !ReferenceEquals(LiveContent, snapshot))
+                    return;
+                _openingFilePath = null;
+            }
+            MatchSplitService.DeletePendingOriginal();
         }
 
         private static async Task HandleCreateClip(JsonElement message)

@@ -2,6 +2,7 @@ import { useMemo, type RefObject } from 'react';
 import { Film } from 'lucide-react';
 import { useAppState } from '../Context/AppStateContext';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
+import { useRecordingSnapshot } from '../Hooks/useRecordingSnapshot';
 import { BookmarkType, type Content } from '../Models/types';
 import { timeStringToSeconds } from '../Utils/NumberUtils';
 import Button from './Button';
@@ -21,7 +22,8 @@ export default function OpenFullSessionButton({
   clipTime,
   duration = Infinity,
 }: OpenFullSessionButtonProps) {
-  const { content } = useAppState();
+  const { content, recording } = useAppState();
+  const { opening, openSnapshot } = useRecordingSnapshot();
   const { previousVideoId, openLinkedMedia } = useSelectedVideo();
   const links = useMemo(() => {
     const matches: { session: Content; sourceStart: number; offset?: number; length?: number }[] =
@@ -61,30 +63,41 @@ export default function OpenFullSessionButton({
     });
   };
   const linkedSession = sessionAt(clipTime);
+  const liveBookmark =
+    mediaId && recording?.filePath && bookmarkType !== BookmarkType.ClipSaved
+      ? recording.bookmarks?.find((mark) => mark.type === bookmarkType && mark.mediaId === mediaId)
+      : undefined;
+  const hasSession = !!(linkedSession || liveBookmark);
 
   const openSession = () => {
     const player = videoRef?.current;
     const time = clipTime === undefined ? undefined : (player?.currentTime ?? clipTime);
     const link = sessionAt(time);
-    if (!link) return;
-    const elapsed = time === undefined ? 0 : Math.min(time - (link.offset ?? 0), link.length ?? 0);
-    openLinkedMedia(
-      { type: 'video', video: link.session },
-      player ? { time: player.currentTime, paused: player.paused } : undefined,
-      link.sourceStart + elapsed,
-    );
+    const playback = player ? { time: player.currentTime, paused: player.paused } : undefined;
+    if (link) {
+      const elapsed =
+        time === undefined ? 0 : Math.min(time - (link.offset ?? 0), link.length ?? 0);
+      openLinkedMedia({ type: 'video', video: link.session }, playback, link.sourceStart + elapsed);
+    } else if (liveBookmark && recording?.filePath) {
+      const bookmarkTime = timeStringToSeconds(liveBookmark.time);
+      openSnapshot(
+        recording.filePath,
+        (session) => openLinkedMedia({ type: 'video', video: session }, playback, bookmarkTime),
+        bookmarkTime,
+      );
+    }
   };
 
   return (
-    <span title={linkedSession ? undefined : 'No linked Full Session'}>
+    <span title={hasSession ? undefined : 'No linked Full Session'}>
       <Button
         size="sm"
         className="h-10 hover:text-accent"
-        disabled={!linkedSession}
+        disabled={!hasSession || opening}
         onClick={openSession}
       >
         <Film className="w-5 h-5" />
-        Open Full Session
+        {opening ? 'Opening…' : 'Open Full Session'}
       </Button>
     </span>
   );

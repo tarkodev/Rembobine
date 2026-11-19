@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Recording } from '../Models/types';
-import { sendMessageToBackend } from '../Utils/MessageUtils';
+import { useSelectedVideo } from '../Context/SelectedVideoContext';
+import { useRecordingSnapshot } from '../Hooks/useRecordingSnapshot';
 
 // One frame per recording, kept across remounts so it is only generated once
 const thumbnailCache = new Map<string, string>();
@@ -36,7 +37,8 @@ export default function LiveSessionCard({
     filePath ? thumbnailCache.get(filePath) : undefined,
   );
   const [thumbnailLoaded, setThumbnailLoaded] = useState(() => !!thumbnailUrl);
-  const [opening, setOpening] = useState(false);
+  const { opening, openSnapshot } = useRecordingSnapshot();
+  const { setSelectedVideo } = useSelectedVideo();
 
   // Retried only until the file has enough data to read
   useEffect(() => {
@@ -68,24 +70,11 @@ export default function LiveSessionCard({
     };
   }, [thumbnailUrl, filePath, startMs]);
 
-  useEffect(() => {
-    const handleMessage = (event: CustomEvent) => {
-      const method = event.detail?.method;
-      if (method === 'RecordingSnapshotReady' || method === 'RecordingSnapshotFailed') {
-        setOpening(false);
-      }
-    };
-    window.addEventListener('websocket-message', handleMessage as EventListener);
-    return () => window.removeEventListener('websocket-message', handleMessage as EventListener);
-  }, []);
-
   return (
     <div
       className={`card card-compact bg-base-300 text-gray-300 w-full ${opening ? 'cursor-default' : 'cursor-pointer'}`}
       onClick={() => {
-        if (opening) return;
-        setOpening(true);
-        sendMessageToBackend('OpenRecordingSnapshot');
+        if (filePath) openSnapshot(filePath, setSelectedVideo);
       }}
     >
       <figure className="relative aspect-video border border-b-0 border-[#49515b] [background:linear-gradient(#000,#000)_padding-box,linear-gradient(#49515b,#49515b)_border-box]">

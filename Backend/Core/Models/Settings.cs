@@ -1473,6 +1473,11 @@ namespace Segra.Backend.Core.Models
                 return Bookmarks?.ToArray() ?? [];
         }
 
+        // The Replay Saved marker sits at the end of the buffer on the session timeline.
+        internal TimeSpan? GetReplayStart(Bookmark marker) =>
+            Type == ContentType.Buffer && marker.Type == BookmarkType.ReplaySaved && marker.MediaId == Id
+                ? marker.Time - Duration : null;
+
         public void AddBookmark(Bookmark bookmark)
         {
             lock (_bookmarksLock)

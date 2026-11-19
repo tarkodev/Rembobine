@@ -102,7 +102,8 @@ namespace Segra.Backend.Media
         internal static Task<string> SaveOutputFrameAsync(OutputFrame frame, string game) =>
             SaveAsync(game, path => EncodePngAsync(frame, path));
 
-        internal static async Task SavePlayerFrameAsync(Stream png, long length, string? game, CancellationToken cancellationToken)
+        internal static async Task SavePlayerFrameAsync(Stream png, long length, string? game, CancellationToken cancellationToken,
+            string? replayId = null, double? frameTime = null)
         {
             byte[] header = new byte[PngHeaderBytes];
             await png.ReadExactlyAsync(header, cancellationToken);
@@ -114,7 +115,7 @@ namespace Segra.Backend.Media
                 throw new InvalidDataException("Invalid screenshot PNG.");
             }
 
-            await SaveAsync(game, async path =>
+            Task<string> SaveImage() => SaveAsync(game, async path =>
             {
                 await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
                 await file.WriteAsync(header, cancellationToken);
@@ -122,6 +123,40 @@ namespace Segra.Backend.Media
                 if (file.Length != length)
                     throw new EndOfStreamException("Screenshot upload was incomplete.");
             });
+
+            var library = AppState.Instance.Content;
+            var replay = replayId == null ? null : library.FirstOrDefault(c => c.Type == Content.ContentType.Buffer && c.Id == replayId);
+            if (replay == null || frameTime is not double seconds || !double.IsFinite(seconds) || seconds < 0 || seconds > replay.Duration.TotalSeconds)
+            {
+                await SaveImage();
+                return;
+            }
+
+            var position = TimeSpan.FromSeconds(seconds);
+            IEnumerable<Bookmark> FrameBookmarks(IEnumerable<Bookmark> markers, TimeSpan maxTime)
+            {
+                foreach (var marker in markers)
+                {
+                    if (replay.GetReplayStart(marker) is not TimeSpan start) continue;
+                    var time = start + position;
+                    if (time >= TimeSpan.Zero && time <= maxTime)
+                        yield return new Bookmark { Type = BookmarkType.ScreenshotSaved, Time = time };
+                }
+            }
+
+            var recording = AppState.Instance.Recording;
+            var liveMark = recording == null ? null : FrameBookmarks(recording.GetBookmarks(), TimeSpan.MaxValue).FirstOrDefault();
+            using var pending = liveMark == null ? null : recording!.BeginLinkedBookmark(liveMark);
+            string mediaId = await SaveImage();
+            pending?.Complete(mediaId);
+            foreach (var session in library.Where(c => c.Type == Content.ContentType.Session))
+            {
+                var marks = FrameBookmarks(session.GetBookmarks(), session.Duration).ToList();
+                foreach (var mark in marks)
+                    mark.MediaId = mediaId;
+                if (marks.Count > 0)
+                    await ContentService.AddBookmarks(session.Id, marks);
+            }
         }
 
         private static async Task<string> SaveAsync(string? game, Func<string, Task> writePng)

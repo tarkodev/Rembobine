@@ -60,11 +60,11 @@ internal sealed class ClipBookmarks : IDisposable
             if (origin.MediaId != source.Id) continue;
             double sessionStart = origin.Time.TotalSeconds;
             double mediaStart, length;
-            if (source.Type == Content.ContentType.Buffer && origin.Type == BookmarkType.ReplaySaved)
+            if (source.GetReplayStart(origin) is TimeSpan replayStart)
             {
                 mediaStart = 0;
                 length = source.Duration.TotalSeconds;
-                sessionStart -= length;
+                sessionStart = replayStart.TotalSeconds;
             }
             else if (source.Type == Content.ContentType.Clip && origin.Type == BookmarkType.ClipSaved &&
                      origin.ClipOffset is double offset && origin.ClipStart is TimeSpan clipStart)

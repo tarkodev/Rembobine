@@ -224,6 +224,7 @@ export default function ScreenshotViewer({
               </div>
             )}
             <OpenFullSessionButton
+              key={screenshot.filePath}
               bookmarkType={BookmarkType.ScreenshotSaved}
               mediaId={getScreenshotMediaId(screenshot)}
             />
