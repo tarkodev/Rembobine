@@ -8,6 +8,19 @@ export type SortOption = 'newest' | 'oldest' | 'size' | 'duration' | 'game';
 export const ALL_GAMES = '__all__';
 export const IMPORTED = 'Imported';
 
+// Keep the existing saved filter keys. A NUL cannot occur in a game folder name.
+export function gameFilterKey(game: string): string {
+  return game === ALL_GAMES || game === IMPORTED || game.startsWith('\0') ? '\0' + game : game;
+}
+
+export function matchesGameFilter(item: { game: string | null; isImported: boolean }, key: string) {
+  if (key === ALL_GAMES) return true;
+  if (key === IMPORTED) return item.isImported;
+  return (
+    !!item.game && !(item.isImported && item.game === 'Unknown') && gameFilterKey(item.game) === key
+  );
+}
+
 const ICON_CLASS = 'shrink-0 text-base-content/60';
 
 export interface GameOption {

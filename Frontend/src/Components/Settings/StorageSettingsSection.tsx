@@ -339,10 +339,10 @@ export default function StorageSettingsSection({
             className="checkbox checkbox-primary checkbox-sm"
           />
           <div>
-            <div className="font-semibold">Save Recordings in Game Folders</div>
+            <div className="font-semibold">Save Recordings and Screenshots in Game Folders</div>
             <div className="text-sm opacity-70 mt-0.5">
-              Puts each recording in a folder named after the game. Changing this moves your
-              existing recordings.
+              Changing this setting also moves existing recordings and captures. Imported
+              screenshots stay in their Imported folder.
             </div>
           </div>
         </label>

@@ -9,6 +9,7 @@ using Segra.Backend.App;
 using Segra.Backend.Core;
 using Segra.Backend.Core.Models;
 using Segra.Backend.Platform;
+using Segra.Backend.Games;
 using Segra.Backend.Recorder;
 using Segra.Backend.Shared;
 using Segra.Backend.Windows.Storage;
@@ -28,6 +29,7 @@ namespace Segra.Backend.Media
         internal const int PngHeaderBytes = 24;
         private static readonly object _libraryLock = new();
         private static readonly SemaphoreSlim _importLock = new(1, 1);
+        private static readonly char[] _invalidNameChars = Path.GetInvalidFileNameChars();
         private static readonly byte[] _pngHeader = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82];
         private static readonly Regex _captureName = new(
             @"^(?<game>.+) - \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.\d{3} - [0-9a-f]{8}$",
@@ -36,6 +38,7 @@ namespace Segra.Backend.Media
         private static string DirectoryPath => Path.Combine(Settings.Instance.ContentFolder, FolderNames.Screenshots);
         private const string ImportedFolderName = "Imported";
         private const string TitlesFileName = ".titles.json";
+        private const string GamesFileName = ".games.json";
         private static StringComparison PathComparison =>
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -121,29 +124,79 @@ namespace Segra.Backend.Media
             using var work = BackgroundWork.Begin();
             string directory = DirectoryPath;
             string id = Guid.NewGuid().ToString("N");
-            var invalidChars = Path.GetInvalidFileNameChars();
-            string title = new string((game ?? "").Take(60)
-                .Select(c => invalidChars.Contains(c) || char.IsControl(c) ? '_' : c).ToArray()).Trim(' ', '.');
-            if (title.Length == 0)
-                title = "Screenshot";
+            string title = CaptureNamePrefix(game);
             string fileName = FormattableString.Invariant($"{title} - {DateTime.Now:yyyy-MM-dd HH-mm-ss.fff} - {id[..8]}.png");
 
-            await WriteImageAsync(Path.Combine(directory, fileName), writePng);
+            await WriteImageAsync(directory, writePng, tempPath =>
+            {
+                string path = Path.Combine(GetCaptureFolder(directory, game), fileName);
+                bool saveGameName = !string.IsNullOrWhiteSpace(game) && (game != title || NeedsGameLookup(title) || title == "Screenshot");
+                if (!saveGameName)
+                {
+                    PublishImage(tempPath, path);
+                    return;
+                }
+
+                // The filename doubles as the bookmark ID. Keep its original game when the prefix is lossy.
+                var games = ReadMap(directory, GamesFileName);
+                games.Add(fileName, game!);
+                WriteMap(directory, GamesFileName, games);
+                try { PublishImage(tempPath, path); }
+                catch
+                {
+                    games.Remove(fileName);
+                    WriteMap(directory, GamesFileName, games);
+                    throw;
+                }
+            });
             Log.Information("Screenshot saved: {FileName}", fileName);
             _ = Task.Run(() => OBSService.PlaySound("screenshot"));
             RefreshAfterFileChange();
             return fileName;
         }
 
-        private static async Task WriteImageAsync(string path, Func<string, Task> writeFile)
+        private static string CaptureNamePrefix(string? game)
         {
-            string directory = Path.GetDirectoryName(path)!;
+            string prefix = new string((game ?? "").Take(60)
+                .Select(c => _invalidNameChars.Contains(c) || char.IsControl(c) || c == '\\' ? '_' : c).ToArray()).Trim(' ', '.');
+            return prefix.Length == 0 ? "Screenshot" : prefix;
+        }
+
+        private static string GetCaptureFolder(string root, string? game)
+        {
+            if (!Settings.Instance.GameSubfolders)
+                return root;
+
+            // Imported is reserved for pictures picked from disk, including copies of native captures.
+            string folderName = StorageService.SanitizeGameNameForFolder(game?.Replace('\\', '_') ?? "Unknown");
+            if (folderName.Length > 255 || (!OperatingSystem.IsWindows() && System.Text.Encoding.UTF8.GetByteCount(folderName) > 255))
+                folderName = CaptureNamePrefix(folderName);
+            if (string.Equals(folderName, ImportedFolderName, PathComparison))
+                folderName += " (game)";
+            return Path.Combine(root, folderName);
+        }
+
+        private static void PublishImage(string tempPath, string destination)
+        {
+            string folder = Path.GetDirectoryName(destination)!;
+            if (new DirectoryInfo(folder).LinkTarget != null)
+                throw new IOException($"The screenshot folder is a link: {folder}");
+            Directory.CreateDirectory(folder);
+            File.Move(tempPath, destination);
+        }
+
+        private static async Task WriteImageAsync(string directory, Func<string, Task> writeFile, Action<string> publish)
+        {
             Directory.CreateDirectory(directory);
             string tempPath = Path.Combine(directory, $".{Guid.NewGuid():N}.tmp");
             try
             {
                 await writeFile(tempPath);
-                File.Move(tempPath, path);
+                lock (_libraryLock)
+                {
+                    // Choose the final directory after encoding, in case Game Subfolders changed meanwhile.
+                    publish(tempPath);
+                }
             }
             catch
             {
@@ -237,11 +290,11 @@ namespace Segra.Backend.Media
                 throw new InvalidDataException("The file is not a supported image.");
 
             source.Position = 0;
-            await WriteImageAsync(destination, async path =>
+            await WriteImageAsync(Path.GetDirectoryName(folder)!, async path =>
             {
                 await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
                 await source.CopyToAsync(file);
-            });
+            }, tempPath => PublishImage(tempPath, destination));
         }
 
         private static async Task EncodePngAsync(OutputFrame frame, string path)
@@ -302,22 +355,15 @@ namespace Segra.Backend.Media
         {
             lock (_libraryLock)
             {
-                string directory = DirectoryPath;
+                string directory = Path.GetFullPath(DirectoryPath);
                 try
                 {
-                    IReadOnlyDictionary<string, string> titles;
-                    try
-                    {
-                        titles = ReadTitles(directory);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-                    {
-                        Log.Warning(ex, "Could not read screenshot titles");
-                        titles = new Dictionary<string, string>();
-                    }
+                    var titles = TryReadMap(directory, TitlesFileName);
+                    var games = TryReadMap(directory, GamesFileName);
+                    var legacyGames = new Dictionary<string, string>(StringComparer.Ordinal);
 
-                    var screenshots = ReadDirectory(directory, isImported: false, titles)
-                        .Concat(ReadDirectory(Path.Combine(directory, ImportedFolderName), isImported: true, titles))
+                    var files = EnumerateImages(directory).ToArray();
+                    var screenshots = files.Select(file => ReadScreenshot(file, directory, titles, games, legacyGames))
                         .OrderByDescending(screenshot => screenshot.CreatedAt)
                         .ThenBy(screenshot => screenshot.FileName, StringComparer.Ordinal)
                         .ToArray();
@@ -330,34 +376,103 @@ namespace Segra.Backend.Media
             }
         }
 
-        private static IEnumerable<Screenshot> ReadDirectory(
-            string directory, bool isImported, IReadOnlyDictionary<string, string> titles)
+        private static IEnumerable<FileInfo> EnumerateImages(string directory)
         {
-            var folder = new DirectoryInfo(directory);
-            if (!folder.Exists)
+            var root = new DirectoryInfo(directory);
+            if (!root.Exists)
                 yield break;
 
-            string prefix = isImported ? $"{ImportedFolderName}/" : "";
-            foreach (var file in folder.EnumerateFiles())
-            {
-                if (ImageType(file.Name) == null)
-                    continue;
+            var options = new EnumerationOptions { AttributesToSkip = FileAttributes.ReparsePoint };
+            // Only the root and its direct children are part of the screenshot library.
+            foreach (var folder in root.EnumerateDirectories("*", options).Prepend(root))
+                foreach (var file in folder.EnumerateFiles("*", options))
+                    if (ImageType(file.Name) != null)
+                        yield return file;
+        }
 
-                string title = Path.GetFileNameWithoutExtension(file.Name);
-                string? game = null;
-                if (!isImported && _captureName.Match(title) is { Success: true } capture)
+        private static bool NeedsGameLookup(string prefix) => prefix.Contains('_') || prefix.Length == 60;
+
+        private static string ResolveLegacyGame(string prefix, Dictionary<string, string> cache)
+        {
+            if (!NeedsGameLookup(prefix))
+                return prefix;
+            if (cache.TryGetValue(prefix, out string? game))
+                return game;
+
+            var names = Settings.Instance.Games.Select(g => g.Name)
+                .Concat(GameUtils.GetGameList().Select(g => g.Name));
+            int separator = prefix.IndexOf('_');
+            string start = separator < 0 ? prefix : prefix[..separator];
+            var candidates = names.Where(n => n.StartsWith(start, StringComparison.Ordinal) && CaptureNamePrefix(n) == prefix)
+                .Distinct().Take(2).ToArray();
+            return cache[prefix] = candidates.Length == 1 ? candidates[0] : prefix;
+        }
+
+        private static Screenshot ReadScreenshot(FileInfo file, string root, Dictionary<string, string>? titles,
+            Dictionary<string, string>? games, Dictionary<string, string> legacyGames)
+        {
+            string? subfolder = string.Equals(file.DirectoryName, root, PathComparison) ? null : file.Directory!.Name;
+            bool imported = string.Equals(subfolder, ImportedFolderName, PathComparison);
+            string title = Path.GetFileNameWithoutExtension(file.Name);
+            string? game = imported ? null : subfolder;
+            if (!imported && _captureName.Match(title) is { Success: true } capture)
+            {
+                title = capture.Groups["game"].Value;
+                game = games != null && games.TryGetValue(file.Name, out var originalGame)
+                    ? originalGame
+                    : title == "Screenshot" ? null : ResolveLegacyGame(title, legacyGames);
+                title = game ?? title;
+                // Reconcile on first load as well as after a setting change. Bookmarks keep the same filename.
+                string folder = GetCaptureFolder(root, game);
+                if (titles != null && games != null && !string.Equals(file.DirectoryName, folder, PathComparison))
+                    MoveCapture(file, root, folder, titles);
+            }
+
+            string key = PathUtils.Normalize(Path.GetRelativePath(root, file.FullName));
+            if (titles != null && titles.TryGetValue(key, out string? savedTitle) && !string.IsNullOrWhiteSpace(savedTitle))
+                title = savedTitle;
+
+            return new Screenshot(file.Name, file.FullName, file.LastWriteTimeUtc,
+                title, game, file.Length, imported);
+        }
+
+        private static void MoveCapture(FileInfo file, string root, string folder, Dictionary<string, string> titles)
+        {
+            string sourceFolder = file.DirectoryName!;
+            string destination = Path.Combine(folder, file.Name);
+            try
+            {
+                if (new DirectoryInfo(folder).LinkTarget != null || File.Exists(destination))
+                    return;
+                Directory.CreateDirectory(folder);
+                string sourceKey = PathUtils.Normalize(Path.GetRelativePath(root, file.FullName));
+                string targetKey = PathUtils.Normalize(Path.GetRelativePath(root, destination));
+                bool hasTitle = titles.TryGetValue(sourceKey, out string? savedTitle);
+                if (hasTitle || titles.ContainsKey(targetKey))
                 {
-                    title = capture.Groups["game"].Value;
-                    if (title != "Screenshot")
-                        game = title;
+                    // Persist the destination title before moving. A crash leaves the title available at either path.
+                    if (hasTitle)
+                        titles[targetKey] = savedTitle!;
+                    else
+                        titles.Remove(targetKey);
+                    WriteMap(root, TitlesFileName, titles);
                 }
 
-                if (titles.TryGetValue(prefix + file.Name, out string? savedTitle) && !string.IsNullOrWhiteSpace(savedTitle))
-                    title = savedTitle;
-
-                yield return new Screenshot(file.Name, file.FullName, file.LastWriteTimeUtc,
-                    title, game, file.Length, isImported);
+                file.MoveTo(destination);
+                if (titles.Remove(sourceKey))
+                    WriteMap(root, TitlesFileName, titles);
+                RemoveEmptyGameFolder(sourceFolder, root);
             }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warning(ex, "Could not organize screenshot {FileName}", file.Name);
+            }
+        }
+
+        private static void RemoveEmptyGameFolder(string folder, string root)
+        {
+            if (!string.Equals(folder, root, PathComparison) && !Directory.EnumerateFileSystemEntries(folder).Any())
+                Directory.Delete(folder);
         }
 
         private static string? ImageType(string path) =>
@@ -377,11 +492,14 @@ namespace Segra.Backend.Media
 
         private static string? GetScreenshotContentType(string path, string root)
         {
-            string? folder = Path.GetDirectoryName(Path.GetFullPath(path));
-            return string.Equals(folder, root, PathComparison)
-                || string.Equals(folder, Path.Combine(root, ImportedFolderName), PathComparison)
-                ? ImageType(path)
-                : null;
+            var file = new FileInfo(path);
+            var folder = file.Directory;
+            if (folder == null || file.LinkTarget != null)
+                return null;
+
+            bool inRoot = string.Equals(folder.FullName, root, PathComparison);
+            bool inChild = string.Equals(folder.Parent?.FullName, root, PathComparison) && folder.LinkTarget == null;
+            return inRoot || inChild ? ImageType(path) : null;
         }
 
         internal static void Rename(string path, string title)
@@ -397,9 +515,9 @@ namespace Segra.Backend.Media
                     throw new FileNotFoundException("The screenshot is no longer in the library.", path);
 
                 // Video bookmarks use the original filename as the screenshot ID.
-                var titles = ReadTitles(directory);
+                var titles = ReadMap(directory, TitlesFileName);
                 titles[PathUtils.Normalize(Path.GetRelativePath(directory, path))] = title;
-                WriteTitles(directory, titles);
+                WriteMap(directory, TitlesFileName, titles);
                 RefreshLibrary();
             }
         }
@@ -413,19 +531,35 @@ namespace Segra.Backend.Media
                 if (!Path.IsPathFullyQualified(path) || GetScreenshotContentType(path, directory) == null)
                     throw new InvalidDataException("Not a library screenshot");
 
+                // A stale UI path may have been reorganized while the viewer was open.
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("The screenshot is no longer at this location.", path);
+                string folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
                 File.Delete(path);
-                captured = string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), directory, PathComparison);
-                if (captured)
-                    ContentService.RemoveBookmarksForDeletedMedia(BookmarkType.ScreenshotSaved, Path.GetFileName(path));
+                captured = !string.Equals(folder, Path.Combine(directory, ImportedFolderName), PathComparison);
+                string name = Path.GetFileName(path);
+                bool lastCapture = captured && !EnumerateImages(directory).Any(other =>
+                    string.Equals(other.Name, name, PathComparison) &&
+                    !string.Equals(other.DirectoryName, Path.Combine(directory, ImportedFolderName), PathComparison));
+                if (lastCapture)
+                    ContentService.RemoveBookmarksForDeletedMedia(BookmarkType.ScreenshotSaved, name);
                 try
                 {
-                    var titles = ReadTitles(directory);
+                    var titles = ReadMap(directory, TitlesFileName);
                     if (titles.Remove(PathUtils.Normalize(Path.GetRelativePath(directory, path))))
-                        WriteTitles(directory, titles);
+                        WriteMap(directory, TitlesFileName, titles);
+                    if (lastCapture)
+                    {
+                        var games = ReadMap(directory, GamesFileName);
+                        if (games.Remove(name))
+                            WriteMap(directory, GamesFileName, games);
+                    }
+                    if (captured)
+                        RemoveEmptyGameFolder(folder, directory);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
                 {
-                    Log.Warning(ex, "Could not remove the title of the deleted screenshot");
+                    Log.Warning(ex, "Could not clean up the deleted screenshot's metadata or folder");
                 }
             }
 
@@ -435,34 +569,38 @@ namespace Segra.Backend.Media
                 RefreshAfterFileChange();
         }
 
-        private static Dictionary<string, string> ReadTitles(string directory)
+        private static Dictionary<string, string>? TryReadMap(string directory, string fileName)
         {
-            var titles = new Dictionary<string, string>(StringComparer.FromComparison(PathComparison));
-            string path = Path.Combine(directory, TitlesFileName);
-            if (!File.Exists(path))
-                return titles;
-
-            var savedTitles = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
-            if (savedTitles != null)
-                foreach (var (name, title) in savedTitles)
-                    titles[name] = title;
-
-            return titles;
+            try { return ReadMap(directory, fileName); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                Log.Warning(ex, "Could not read screenshot metadata {File}", fileName);
+                return null;
+            }
         }
 
-        private static void WriteTitles(string directory, Dictionary<string, string> titles)
+        private static Dictionary<string, string> ReadMap(string directory, string fileName)
+        {
+            string path = Path.Combine(directory, fileName);
+            var saved = File.Exists(path) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) : null;
+            var result = new Dictionary<string, string>(StringComparer.FromComparison(PathComparison));
+            if (saved != null)
+                foreach (var (name, value) in saved)
+                    result[name] = value;
+            return result;
+        }
+
+        private static void WriteMap(string directory, string fileName, Dictionary<string, string> values)
         {
             string tempPath = Path.Combine(directory, $".{Guid.NewGuid():N}.tmp");
             try
             {
-                File.WriteAllText(tempPath, JsonSerializer.Serialize(titles));
-                File.Move(tempPath, Path.Combine(directory, TitlesFileName), overwrite: true);
+                File.WriteAllText(tempPath, JsonSerializer.Serialize(values));
+                File.Move(tempPath, Path.Combine(directory, fileName), overwrite: true);
             }
-            catch
+            finally
             {
-                try { File.Delete(tempPath); }
-                catch (Exception ex) { Log.Warning(ex, "Could not remove unfinished screenshot titles"); }
-                throw;
+                File.Delete(tempPath);
             }
         }
 

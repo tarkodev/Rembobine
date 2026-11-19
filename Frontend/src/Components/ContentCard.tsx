@@ -25,7 +25,7 @@ import { useCompression } from '../Context/CompressionContext';
 import { useContentMigration } from '../Context/ContentMigrationContext';
 import Button from './Button';
 import MatchTooltip from './MatchTooltip';
-import LibraryGameIcon from './LibraryGameIcon';
+import LibraryMediaMetadata from './LibraryMediaMetadata';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import {
   getMatchRecord,
@@ -760,22 +760,12 @@ export default function ContentCard({
           </div>
         </div>
         <div className="text-sm text-gray-200 flex items-center justify-between w-full">
-          <span className="inline-flex items-center gap-1.5">
-            {content!.game && content!.game !== 'Unknown' && (
-              <>
-                <LibraryGameIcon src={gameIcon} name={content!.game} />
-                <span aria-hidden="true">•</span>
-              </>
-            )}
-            <span>{content!.fileSize}</span>
-            <span aria-hidden="true">•</span>
-            <time dateTime={content!.createdAt}>
-              {new Date(content!.createdAt).toLocaleString(undefined, {
-                dateStyle: 'short',
-                timeStyle: 'short',
-              })}
-            </time>
-          </span>
+          <LibraryMediaMetadata
+            game={content!.game}
+            gameIcon={gameIcon}
+            fileSize={content!.fileSize}
+            createdAt={content!.createdAt}
+          />
           {enableAccountAndSharing && uploadUrl && (
             <div className="flex h-5 shrink-0 items-center">
               <span

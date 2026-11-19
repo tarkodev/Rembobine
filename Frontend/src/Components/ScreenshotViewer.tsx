@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Maximize, Minimize, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'lucide-react';
+import { useAppState } from '../Context/AppStateContext';
+import { useSettings } from '../Context/SettingsContext';
+import { getContentGameIcon } from '../Utils/GameIconUtils';
 import { useModal } from '../Context/ModalContext';
 import { MAX_SCREENSHOT_ZOOM, useScreenshotViewport } from '../Hooks/useScreenshotViewport';
 import { BookmarkType, type Screenshot } from '../Models/types';
@@ -14,7 +17,7 @@ interface ScreenshotViewerProps {
   navigation?: {
     previous?: Screenshot;
     next?: Screenshot;
-    onSelect: (filePath: string) => void;
+    onSelect: (screenshot: Screenshot) => void;
   };
   onBack: () => void;
 }
@@ -30,6 +33,12 @@ export default function ScreenshotViewer({
   onBack,
 }: ScreenshotViewerProps) {
   const { isModalOpen } = useModal();
+  const { gameList } = useAppState();
+  const { games, loadGameArtwork } = useSettings();
+  const gameIcon = useMemo(
+    () => getContentGameIcon(screenshot, gameList, games, loadGameArtwork),
+    [screenshot, gameList, games, loadGameArtwork],
+  );
   const { previous, next, onSelect } = navigation ?? {};
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
@@ -74,11 +83,11 @@ export default function ScreenshotViewer({
       switch (event.key) {
         case 'ArrowLeft':
           if (!previous || !onSelect) return;
-          onSelect(previous.filePath);
+          onSelect(previous);
           break;
         case 'ArrowRight':
           if (!next || !onSelect) return;
-          onSelect(next.filePath);
+          onSelect(next);
           break;
         case 'f':
         case 'F':
@@ -106,6 +115,8 @@ export default function ScreenshotViewer({
         createdAt={screenshot.createdAt}
         fileSize={screenshot.fileSize ?? '—'}
         filePath={screenshot.filePath}
+        game={screenshot.game ?? undefined}
+        gameIcon={gameIcon}
         onBack={onBack}
       />
       <div
@@ -193,7 +204,7 @@ export default function ScreenshotViewer({
                   type="button"
                   className={navigationButtonClass}
                   disabled={!previous}
-                  onClick={() => previous && navigation.onSelect(previous.filePath)}
+                  onClick={() => previous && navigation.onSelect(previous)}
                   aria-label="Previous screenshot"
                   title="Previous screenshot (←)"
                 >
@@ -203,7 +214,7 @@ export default function ScreenshotViewer({
                   type="button"
                   className={navigationButtonClass}
                   disabled={!next}
-                  onClick={() => next && navigation.onSelect(next.filePath)}
+                  onClick={() => next && navigation.onSelect(next)}
                   aria-label="Next screenshot"
                   title="Next screenshot (→)"
                 >

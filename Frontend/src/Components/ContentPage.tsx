@@ -8,17 +8,14 @@ import type { LucideIcon } from 'lucide-react';
 import { FileUp, Merge, Trash2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
-import ContentFilters, { ALL_GAMES, GameOption, IMPORTED, SortOption } from './ContentFilters';
+import ContentFilters, { ALL_GAMES, matchesGameFilter, SortOption } from './ContentFilters';
 import { useSettings } from '../Context/SettingsContext';
 import { useModal } from '../Context/ModalContext';
 import { useImports } from '../Context/ImportContext';
 import Button from './Button';
 import MergeModal from './MergeModal';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
-import { getContentGameIcon } from '../Utils/GameIconUtils';
-
-// Imports that carried no Segra metadata have no game, so they are only listed under Imported
-const isUnknownImport = (item: Content) => item.isImported && item.game === 'Unknown';
+import { useLibraryGames } from '../Hooks/useLibraryGames';
 
 // Escape a filename for use inside a CSS attribute-selector string. Windows
 // filenames can't contain " or \, but escape defensively all the same.
@@ -67,7 +64,7 @@ export default function ContentPage({
     () => state.content.filter((video) => video.type === contentType),
     [state.content, contentType],
   );
-  const { games: gameSettings, loadGameArtwork, showImportInClipsAndHighlights } = useSettings();
+  const { showImportInClipsAndHighlights } = useSettings();
   const showImport =
     sectionId === 'sessions' ||
     sectionId === 'replayBuffer' ||
@@ -92,29 +89,7 @@ export default function ContentPage({
     }
   });
 
-  const { gameOptions, gamesByName } = useMemo(() => {
-    const options = new Map<string, GameOption>();
-    for (const item of contentItems) {
-      if (isUnknownImport(item)) continue;
-      const existing = options.get(item.game);
-      if (existing) existing.count++;
-      else
-        options.set(item.game, {
-          key: item.game,
-          name: item.game,
-          icon: getContentGameIcon(item, state.gameList, gameSettings, loadGameArtwork),
-          count: 1,
-        });
-    }
-    const sorted = [...options.values()].sort(
-      (a, b) => b.count - a.count || a.name.localeCompare(b.name),
-    );
-
-    const importedCount = contentItems.filter((item) => item.isImported).length;
-    if (importedCount > 0)
-      sorted.push({ key: IMPORTED, name: 'Imported', icon: null, count: importedCount });
-    return { gameOptions: sorted, gamesByName: options };
-  }, [contentItems, state.gameList, gameSettings, loadGameArtwork]);
+  const { gameOptions, gamesByName } = useLibraryGames(contentItems);
 
   useEffect(() => {
     if (selectedGame !== ALL_GAMES && !gameOptions.some((g) => g.key === selectedGame)) {
@@ -123,15 +98,7 @@ export default function ContentPage({
   }, [gameOptions, selectedGame]);
 
   const filteredItems = useMemo(() => {
-    let filtered = [...contentItems];
-
-    if (selectedGame !== ALL_GAMES) {
-      filtered = filtered.filter((item) =>
-        selectedGame === IMPORTED
-          ? item.isImported
-          : !isUnknownImport(item) && item.game === selectedGame,
-      );
-    }
+    const filtered = contentItems.filter((item) => matchesGameFilter(item, selectedGame));
 
     const byOption = (a: (typeof filtered)[number], b: (typeof filtered)[number]) => {
       switch (sortOption) {

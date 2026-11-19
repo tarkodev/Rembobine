@@ -7,6 +7,7 @@ import ReplayBuffer from './Pages/replay-buffer';
 import Highlights from './Pages/highlights';
 import Screenshots from './Pages/screenshots';
 import ScreenshotViewer from './Components/ScreenshotViewer';
+import { resolveScreenshot } from './Utils/ScreenshotUtils';
 import { SettingsProvider } from './Context/SettingsContext';
 import { AppStateProvider } from './Context/AppStateContext';
 import Video from './Pages/video';
@@ -19,6 +20,7 @@ import {
   CONTENT_MENU_ITEMS,
   DEFAULT_MENU_ITEMS,
   MenuItemId,
+  type Screenshot,
   menuItemHasContent,
 } from './Models/types';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -64,14 +66,12 @@ function App() {
   const mediaMenu = linkedScreenshot
     ? 'Screenshots'
     : selectedVideo && CONTENT_MENU_ITEMS[selectedVideo.type];
-  const [selectedScreenshotPath, setSelectedScreenshotPath] = useState<string | null>(null);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<Screenshot | null>(null);
   const settings = useSettings();
   const appState = useAppState();
   const savedVideo = selectedVideo && appState.content.find((item) => item.id === selectedVideo.id);
   const removedVideo = selectedVideo && !selectedVideo.id.startsWith('live-') && !savedVideo;
-  const savedScreenshot =
-    linkedScreenshot &&
-    appState.screenshots.find((item) => item.filePath === linkedScreenshot.filePath);
+  const savedScreenshot = resolveScreenshot(appState.screenshots, linkedScreenshot);
   const removedScreenshot = linkedScreenshot && !savedScreenshot;
   useEffect(() => {
     if (removedVideo || removedScreenshot) goBack();
@@ -116,7 +116,7 @@ function App() {
 
   const handleMenuSelection = (menu: MenuItemId | string) => {
     setSelectedVideo(null);
-    setSelectedScreenshotPath(null);
+    setSelectedScreenshot(null);
     setSelectedMenu(menu);
   };
 
@@ -146,7 +146,7 @@ function App() {
         return <Highlights />;
       case 'Screenshots':
         return (
-          <Screenshots selectedPath={selectedScreenshotPath} onSelect={setSelectedScreenshotPath} />
+          <Screenshots selectedScreenshot={selectedScreenshot} onSelect={setSelectedScreenshot} />
         );
       case 'Settings':
         return <Settings />;

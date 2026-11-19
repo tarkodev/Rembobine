@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Camera, FileUp } from 'lucide-react';
 import Button from '../Components/Button';
-import ContentFilters, { ALL_GAMES, IMPORTED } from '../Components/ContentFilters';
-import type { GameOption, SortOption } from '../Components/ContentFilters';
+import ContentFilters, { ALL_GAMES, matchesGameFilter } from '../Components/ContentFilters';
+import type { SortOption } from '../Components/ContentFilters';
+import LibraryMediaMetadata from '../Components/LibraryMediaMetadata';
 import ScreenshotActions from '../Components/ScreenshotActions';
 import ScreenshotViewer from '../Components/ScreenshotViewer';
 import { useAppState } from '../Context/AppStateContext';
 import { useScroll } from '../Context/ScrollContext';
-import { useSettings } from '../Context/SettingsContext';
+import { useLibraryGames } from '../Hooks/useLibraryGames';
+import type { Screenshot } from '../Models/types';
+import { resolveScreenshot } from '../Utils/ScreenshotUtils';
 import { getContentFileUrl } from '../Utils/FileUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 
@@ -15,8 +18,8 @@ const SECTION_ID = 'screenshots';
 const SCREENSHOT_SORTS: SortOption[] = ['newest', 'oldest', 'size', 'game'];
 
 interface ScreenshotsProps {
-  selectedPath: string | null;
-  onSelect: (filePath: string | null) => void;
+  selectedScreenshot: Screenshot | null;
+  onSelect: (screenshot: Screenshot | null) => void;
 }
 
 function readPreference(key: string): unknown {
@@ -27,9 +30,8 @@ function readPreference(key: string): unknown {
   }
 }
 
-export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps) {
-  const { screenshots, gameList } = useAppState();
-  const { games: gameSettings, loadGameArtwork } = useSettings();
+export default function Screenshots({ selectedScreenshot, onSelect }: ScreenshotsProps) {
+  const { screenshots } = useAppState();
   const [selectedGame, setSelectedGame] = useState(() => {
     const saved = readPreference('filters');
     return typeof saved === 'string' ? saved : ALL_GAMES;
@@ -41,38 +43,7 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
   const galleryRef = useRef<HTMLDivElement>(null);
   const { scrollPositions, setScrollPosition } = useScroll();
 
-  const gameOptions = useMemo(() => {
-    const byGame = new Map<string, GameOption>();
-    let importedCount = 0;
-    for (const screenshot of screenshots) {
-      if (screenshot.isImported) importedCount++;
-      const game = screenshot.game;
-      if (!game) continue;
-
-      const group = byGame.get(game);
-      if (group) {
-        group.count++;
-        continue;
-      }
-
-      const setting = gameSettings.find((item) => item.name === game);
-      const iconId = gameList.find((item) => item.name === game)?.icon || setting?.icon;
-      const icon =
-        iconId && loadGameArtwork
-          ? `https://segra.tv/api/games/icon/${iconId}`
-          : setting?.customIcon
-            ? `data:image/png;base64,${setting.customIcon}`
-            : null;
-      byGame.set(game, { key: game, name: game, icon, count: 1 });
-    }
-
-    const options = [...byGame.values()].sort(
-      (a, b) => b.count - a.count || a.name.localeCompare(b.name),
-    );
-    if (importedCount > 0)
-      options.push({ key: IMPORTED, name: 'Imported', icon: null, count: importedCount });
-    return options;
-  }, [screenshots, gameList, gameSettings, loadGameArtwork]);
+  const { gameOptions, gamesByName } = useLibraryGames(screenshots);
 
   const gameFilter = gameOptions.some((game) => game.key === selectedGame)
     ? selectedGame
@@ -81,10 +52,7 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
   const filtered = useMemo(
     () =>
       screenshots
-        .filter((screenshot) => {
-          if (gameFilter === ALL_GAMES) return true;
-          return gameFilter === IMPORTED ? screenshot.isImported : screenshot.game === gameFilter;
-        })
+        .filter((screenshot) => matchesGameFilter(screenshot, gameFilter))
         .sort((a, b) => {
           const newestFirst = Date.parse(b.createdAt) - Date.parse(a.createdAt);
           switch (sortOption) {
@@ -101,12 +69,14 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
     [gameFilter, screenshots, sortOption],
   );
 
-  const selectedIndex = filtered.findIndex((screenshot) => screenshot.filePath === selectedPath);
+  const saved = resolveScreenshot(screenshots, selectedScreenshot);
+  const selectedIndex = saved ? filtered.indexOf(saved) : -1;
   const selected = filtered[selectedIndex];
 
   useEffect(() => {
-    if (selectedPath && !screenshots.some((item) => item.filePath === selectedPath)) onSelect(null);
-  }, [screenshots, selectedPath, onSelect]);
+    if (selectedScreenshot && selectedScreenshot.filePath !== saved?.filePath)
+      onSelect(saved ?? null);
+  }, [selectedScreenshot, saved, onSelect]);
 
   useLayoutEffect(() => {
     if (!selected && galleryRef.current) galleryRef.current.scrollTop = scrollPositions.screenshots;
@@ -169,7 +139,11 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
           {filtered.map((screenshot) => (
             <article
               key={screenshot.filePath}
-              className="card card-compact w-full bg-base-300 text-gray-300"
+              className="card card-compact w-full cursor-pointer bg-base-300 text-gray-300"
+              onClick={() => {
+                setScrollPosition('screenshots', galleryRef.current?.scrollTop ?? 0);
+                onSelect(screenshot);
+              }}
             >
               <figure className="relative aspect-video border border-b-0 border-[#49515b] bg-base-200">
                 <img
@@ -180,30 +154,31 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
                   loading="lazy"
                   decoding="async"
                 />
+                <button
+                  type="button"
+                  className="absolute inset-0 cursor-pointer rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+                  aria-label={`View screenshot ${screenshot.title}`}
+                />
               </figure>
-              <button
-                type="button"
-                className="absolute inset-0 z-10 cursor-pointer rounded-[inherit] focus-visible:outline-2 focus-visible:outline-primary"
-                aria-label={`View screenshot ${screenshot.title}`}
-                onClick={() => {
-                  setScrollPosition('screenshots', galleryRef.current?.scrollTop ?? 0);
-                  onSelect(screenshot.filePath);
-                }}
-              />
               <div className="card-body gap-1 rounded-b-[inherit] border border-t-0 border-[#49515b] pt-2">
                 <div className="flex items-center justify-between gap-1">
                   <h2 className="card-title min-w-0 truncate !block" title={screenshot.fileName}>
                     {screenshot.title}
                   </h2>
-                  <div className="relative z-20 shrink-0">
+                  <div
+                    className="relative z-20 shrink-0"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <ScreenshotActions screenshot={screenshot} />
                   </div>
                 </div>
                 <div className="text-sm text-gray-200">
-                  {screenshot.fileSize && <>{screenshot.fileSize} &bull; </>}
-                  <time dateTime={screenshot.createdAt}>
-                    {new Date(screenshot.createdAt).toLocaleDateString()}
-                  </time>
+                  <LibraryMediaMetadata
+                    game={screenshot.game}
+                    gameIcon={screenshot.game ? gamesByName.get(screenshot.game)?.icon : null}
+                    fileSize={screenshot.fileSize}
+                    createdAt={screenshot.createdAt}
+                  />
                 </div>
               </div>
             </article>

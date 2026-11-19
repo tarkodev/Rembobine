@@ -268,6 +268,8 @@ namespace Segra.Backend.Media
 
         public static async Task SyncContentGameNamesByIgdb()
         {
+            // The catalog may arrive after the first library scan resolves legacy screenshot filenames.
+            ScreenshotService.RefreshLibrary();
             var list = AppState.Instance.Content;
             if (list == null || list.Count == 0) return;
 
@@ -369,7 +371,7 @@ namespace Segra.Backend.Media
         private static readonly SemaphoreSlim _gameFolderMoveLock = new(1, 1);
 
         /// <summary>
-        /// Moves videos in the recording folder into or out of game subfolders to match the setting.
+        /// Moves library videos and screenshots into or out of game subfolders to match the setting.
         /// </summary>
         public static async Task ApplyGameSubfoldersAsync()
         {
@@ -464,6 +466,8 @@ namespace Segra.Backend.Media
                 // Reload from the sidecars, a library reload during the run may have dropped moved videos
                 if (moved > 0)
                     await SettingsService.LoadContentFromFolderIntoState();
+                else
+                    ScreenshotService.RefreshLibrary();
             }
             finally
             {

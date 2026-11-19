@@ -1,7 +1,7 @@
-import type { Content, GameListEntry, GameSetting } from '../Models/types';
+import type { GameListEntry, GameSetting } from '../Models/types';
 
 export function getContentGameIcon(
-  { game, igdbId }: Pick<Content, 'game' | 'igdbId'>,
+  { game, igdbId }: { game: string | null; igdbId?: number },
   gameList: GameListEntry[],
   settings: GameSetting[],
   loadGameArtwork: boolean,
