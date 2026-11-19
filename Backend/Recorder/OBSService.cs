@@ -1199,6 +1199,14 @@ namespace Segra.Backend.Recorder
             _recorderLock.Wait();
             try
             {
+                // Stop may have completed while an automatic start was queued on the recorder lock.
+                if (!userInitiated && pid is int gamePid && GameDetectionService.IsAutoRecordingPaused(gamePid, exePath))
+                {
+                    if (AppState.Instance.PreRecording?.Pid == gamePid)
+                        AppState.Instance.PreRecording = null;
+                    return false;
+                }
+
                 StopAlwaysOnBufferCore();
                 started = StartRecordingCore(name, exePath, startManually, pid, cancel, userInitiated);
                 return started;
@@ -2392,9 +2400,9 @@ namespace Segra.Backend.Recorder
         {
             if (userRequested)
             {
-                // Game recordings only; the still-focused game shouldn't restart until the foreground window changes
-                if (AppState.Instance.PreRecording != null || AppState.Instance.Recording?.Pid != null)
-                    GameDetectionService.PreventRetryRecording = true;
+                var state = AppState.Instance;
+                if ((state.Recording?.Pid ?? state.PreRecording?.Pid) is int gamePid)
+                    GameDetectionService.PauseAutoRecording(gamePid);
                 CancelPendingStart();
             }
 

@@ -1,4 +1,5 @@
 using Serilog;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
@@ -27,6 +28,47 @@ namespace Segra.Backend.Games
         // Written only by the process watcher, including its initial snapshot.
         private static readonly Dictionary<int, RunningGame> _runningGames = new();
 
+        // A foreground change can retry a failed capture, but a manual stop belongs to the
+        // lifetime of the game process. Keep separate entries when several games are open.
+        private static readonly ConcurrentDictionary<int, DateTime?> _manuallyStoppedGames = new();
+
+        private static DateTime? ProcessStartTime(int pid)
+        {
+            try
+            {
+#if !WINDOWS
+                if (Platform.Linux.FlatpakHost.IsFlatpak) return null; // host PID namespace
+#endif
+                using var process = Process.GetProcessById(pid);
+                return process.StartTime.ToUniversalTime();
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                return null; // Protected games can still be tracked by the process watcher.
+            }
+        }
+
+        internal static void PauseAutoRecording(int pid)
+        {
+            _manuallyStoppedGames[pid] = ProcessStartTime(pid);
+            Log.Information("Paused automatic recording for game process {Pid} after manual stop", pid);
+#if !WINDOWS
+            if (_recordingSteamInstallPath is string installPath)
+                _manuallyStoppedSteamInstalls.TryAdd(installPath, 0);
+#endif
+        }
+
+        internal static bool IsAutoRecordingPaused(int pid, string exePath)
+        {
+#if !WINDOWS
+            if (SteamInstallDirFromExe(exePath) is string installPath && _manuallyStoppedSteamInstalls.ContainsKey(installPath))
+                return true;
+#endif
+            if (!_manuallyStoppedGames.TryGetValue(pid, out DateTime? stoppedStart)) return false;
+            // A quick relaunch can reuse the PID between two process snapshots.
+            return stoppedStart == null || ProcessStartTime(pid) is not DateTime currentStart || currentStart == stoppedStart;
+        }
+
         private static void TrackGame(int pid, string exePath)
         {
             if (IsIrrelevantProcessPath(exePath)) return;
@@ -45,6 +87,9 @@ namespace Segra.Backend.Games
 
         private static void PublishRunningGame(HashSet<int> livePids)
         {
+            foreach (var stopped in _manuallyStoppedGames)
+                if (!livePids.Contains(stopped.Key) && !IsProcessRunning(stopped.Key))
+                    _manuallyStoppedGames.TryRemove(stopped);
             foreach (int pid in _runningGames.Keys.Where(pid => !livePids.Contains(pid)).ToArray())
                 _runningGames.Remove(pid);
             AppState.Instance.RunningGame = _runningGames.Values.LastOrDefault();
@@ -62,6 +107,7 @@ namespace Segra.Backend.Games
         // Wine, so its Linux PIDs are volatile; every process in the session shares this path, so we track
         // it to detect when the game closes (instead of a single PID that may exit mid-session).
         private static string? _recordingSteamInstallPath;
+        private static readonly ConcurrentDictionary<string, byte> _manuallyStoppedSteamInstalls = new(StringComparer.OrdinalIgnoreCase);
         // Proton game whose start failed; not retried until it closes
         private static string? _failedSteamInstallPath;
         // First sighting of pids that still showed the Wine loader; Wine renames a process to its exe shortly after exec
@@ -267,6 +313,10 @@ namespace Segra.Backend.Games
                 current.ExceptWith(wineStarting);
                 foreach (int pid in _wineStarting.Keys.Except(wineStarting).ToList())
                     _wineStarting.Remove(pid);
+
+                foreach (string installPath in _manuallyStoppedSteamInstalls.Keys)
+                    if (!AnyProcessHasSteamInstall(current, installPath))
+                        _manuallyStoppedSteamInstalls.TryRemove(installPath, out _);
 
                 if (_failedSteamInstallPath != null && !AnyProcessHasSteamInstall(current, _failedSteamInstallPath))
                     _failedSteamInstallPath = null;
@@ -496,7 +546,7 @@ namespace Segra.Backend.Games
                     OBSService.UpdateGameCaptureWindow(exePath);
                 }
 
-                if (ShouldRecordGame(exePath))
+                if (ShouldRecordGame(pid, exePath))
                 {
                     StartGameRecording(pid, exePath);
                 }
@@ -556,6 +606,15 @@ namespace Segra.Backend.Games
             if (steamInstallPath != null && string.Equals(steamInstallPath, _failedSteamInstallPath, StringComparison.OrdinalIgnoreCase))
                 return;
 #endif
+
+            if (userInitiated)
+            {
+                _manuallyStoppedGames.TryRemove(pid, out _);
+#if !WINDOWS
+                if (steamInstallPath != null)
+                    _manuallyStoppedSteamInstalls.TryRemove(steamInstallPath, out _);
+#endif
+            }
 
             Log.Information($"[StartGameRecording] Starting recording for game: PID {pid}, Path: {exePath}");
 
@@ -619,9 +678,11 @@ namespace Segra.Backend.Games
         }
 #endif
 
-        private static bool ShouldRecordGame(string exePath, string? fileDescription = null)
+        private static bool ShouldRecordGame(int pid, string exePath, string? fileDescription = null)
         {
             if (string.IsNullOrEmpty(exePath) || AppState.Instance.Recording != null || AppState.Instance.PreRecording != null) return false;
+
+            if (IsAutoRecordingPaused(pid, exePath)) return false;
 
             // 1. Check the unified per-game settings list (replaces whitelist/blacklist).
             // Record == true forces recording, Record == false prevents it, null falls through to auto-record.
@@ -961,7 +1022,7 @@ namespace Segra.Backend.Games
                     return;
                 }
 
-                if (ShouldRecordGame(foregroundExePath))
+                if (ShouldRecordGame((int)foregroundPid, foregroundExePath))
                 {
                     string processName = "Unknown";
                     try
@@ -1450,7 +1511,7 @@ namespace Segra.Backend.Games
                         Log.Information($"Foreground window changed. HWND: 0x{hwnd.ToInt64():X8}, PID: {pid,5}, file description: '{fileDescription}' for {exePath}");
                         _lastLoggedHwnd = hwnd;
 
-                        if (ShouldRecordGame(exePath, fileDescription))
+                        if (ShouldRecordGame((int)pid, exePath, fileDescription))
                         {
                             StartGameRecording((int)pid, exePath);
                         }
