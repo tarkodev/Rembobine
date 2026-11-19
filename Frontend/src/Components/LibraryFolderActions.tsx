@@ -18,7 +18,7 @@ export default function LibraryFolderActions({
   return (
     <>
       <Button
-        variant="ghost"
+        variant="primary"
         size="sm"
         className="no-animation h-8 gap-1"
         onClick={() =>
