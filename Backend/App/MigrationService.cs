@@ -227,7 +227,7 @@ internal static class MigrationService
             new("0012_backfill_custom_game_icons", Apply_0012_BackfillCustomGameIcons),
             new("0013_backfill_compressed_flag", Apply_0013_BackfillCompressedFlag),
             new("0014_id_keyed_sidecars", Apply_0014_IdKeyedSidecars),
-            new("0015_delete_empty_game_folders", Apply_0015_DeleteEmptyGameFolders),
+            new("0015_delete_empty_game_folders", DeleteEmptyVideoGameFolders),
             new("0016_copy_compress_10mb_to_20mb", Apply_0016_CopyCompress10MbTo20Mb),
             new("0017_per_device_input_options", Apply_0017_PerDeviceInputOptions),
             new("0018_embed_metadata_in_videos", Apply_0018_EmbedMetadataInVideos),
@@ -235,7 +235,8 @@ internal static class MigrationService
             new("0020_remove_legacy_nvenc_presets", Apply_0020_RemoveLegacyNvencPresets),
             new("0021_non_deprecated_nvenc_ids", Apply_0021_NonDeprecatedNvencIds),
             new("0022_backfill_played_games", Apply_0022_BackfillPlayedGames),
-            new("0023_clip_bookmarks_at_end", Apply_0023_ClipBookmarksAtEnd)
+            new("0023_clip_bookmarks_at_end", Apply_0023_ClipBookmarksAtEnd),
+            new("0024_delete_unused_recording_folders", DeleteEmptyVideoGameFolders)
         ];
     }
 
@@ -420,9 +421,8 @@ internal static class MigrationService
         }
     }
 
-    // Migration 0015: The post-delete cleanup of empty game folders never matched on Windows,
-    // leaving empty folders behind. Remove them.
-    private static void Apply_0015_DeleteEmptyGameFolders()
+    // Repeat the 0015 cleanup for folders older recorders created before a replay was saved.
+    private static void DeleteEmptyVideoGameFolders()
     {
         string contentRoot = Settings.Instance.ContentFolder;
         string[] rootFolders = [FolderNames.Sessions, FolderNames.Buffers, FolderNames.Clips, FolderNames.Highlights];
@@ -431,22 +431,23 @@ internal static class MigrationService
         foreach (var rootFolder in rootFolders)
         {
             string typeFolder = Path.Combine(contentRoot, rootFolder);
-            if (!Directory.Exists(typeFolder)) continue;
+            if (!Directory.Exists(typeFolder) || File.GetAttributes(typeFolder).HasFlag(FileAttributes.ReparsePoint)) continue;
 
             foreach (var gameFolder in Directory.GetDirectories(typeFolder))
             {
                 try
                 {
-                    if (!Directory.EnumerateFileSystemEntries(gameFolder).Any())
+                    if (!File.GetAttributes(gameFolder).HasFlag(FileAttributes.ReparsePoint)
+                        && !Directory.EnumerateFileSystemEntries(gameFolder).Any())
                     {
                         Directory.Delete(gameFolder);
                         deletedCount++;
-                        Log.Information("Migration 0015: deleted empty game folder {Folder}", gameFolder);
+                        Log.Information("Deleted empty game folder {Folder}", gameFolder);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning(ex, "Migration 0015: failed to delete folder {Folder}", gameFolder);
+                    Log.Warning(ex, "Failed to delete empty game folder {Folder}", gameFolder);
                 }
             }
         }

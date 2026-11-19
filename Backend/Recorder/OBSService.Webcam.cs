@@ -104,8 +104,6 @@ namespace Segra.Backend.Recorder
 
             try
             {
-                Directory.CreateDirectory(WebcamFolder);
-
                 if (buffer)
                 {
                     // Room for the buffer duration at the webcam bitrate, with margin
@@ -122,6 +120,7 @@ namespace Segra.Backend.Recorder
 
                 if (session && sessionVideoPath != null)
                 {
+                    Directory.CreateDirectory(WebcamFolder);
                     layer.FilePath = PathUtils.Combine(WebcamFolder, Path.GetFileName(sessionVideoPath));
                     _webcamOutput = new RecordingOutput("webcam_output", layer.FilePath);
                     _webcamOutput.Update(s => s.Set("tracks", 1L));

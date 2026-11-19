@@ -1876,11 +1876,6 @@ namespace Segra.Backend.Recorder
                 _audioEncoders.Add(audioEncoder);
             }
 
-            string sessionDir = StorageService.GetOutputFolder(PathUtils.Combine(Settings.Instance.ContentFolder, FolderNames.Sessions), name);
-            string bufferDir = StorageService.GetOutputFolder(PathUtils.Combine(Settings.Instance.ContentFolder, FolderNames.Buffers), name);
-            if (!Directory.Exists(sessionDir)) Directory.CreateDirectory(sessionDir);
-            if (!Directory.Exists(bufferDir)) Directory.CreateDirectory(bufferDir);
-
             string? videoOutputPath = null; // only set for session/hybrid session output
 
             // Configure outputs depending on mode
@@ -1889,6 +1884,8 @@ namespace Segra.Backend.Recorder
                 uint bufferTracksMask = trackCount >= 32 ? uint.MaxValue : (1u << trackCount) - 1u;
 
                 _bufferOutput = new ReplayBuffer("replay_buffer_output", eff.ReplayBufferDuration, eff.ReplayBufferMaxSize);
+                // OBS creates the directory when it writes the first saved replay.
+                string bufferDir = StorageService.GetOutputFolder(PathUtils.Combine(Settings.Instance.ContentFolder, FolderNames.Buffers), name);
                 _bufferOutput.SetDirectory(bufferDir);
                 _bufferOutput.SetFilenameFormat("%CCYY-%MM-%DD_%hh-%mm-%ss");
                 _bufferOutput.Update(s => s.Set("extension", "mp4").Set("tracks", (long)bufferTracksMask));
@@ -1908,6 +1905,8 @@ namespace Segra.Backend.Recorder
 
             if (isSessionMode || isHybridMode)
             {
+                string sessionDir = StorageService.GetOutputFolder(PathUtils.Combine(Settings.Instance.ContentFolder, FolderNames.Sessions), name);
+                Directory.CreateDirectory(sessionDir);
                 videoOutputPath = $"{sessionDir}/{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4";
 
                 uint recordTracksMask = trackCount >= 32 ? uint.MaxValue : (1u << trackCount) - 1u;
