@@ -61,6 +61,7 @@ namespace Segra.Backend.App
         private static readonly string LogFilePath =
           Segra.Backend.Shared.PathUtils.Normalize(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Segra", "logs.log"));
         private const string PipeName = "Segra_SingleInstance";
+        private const string InstanceMutexName = "SegraApplicationMutex";
         private static Mutex? singleInstanceMutex;
         private static Thread? pipeServerThread;
         private static string? appUrl;
@@ -73,6 +74,12 @@ namespace Segra.Backend.App
         static void Main(string[] args)
         {
 #if WINDOWS
+            if (args.Contains("--quit"))
+            {
+                Environment.ExitCode = Platform.Windows.WindowsQuitCommand.RequestAsync(InstanceMutexName).GetAwaiter().GetResult();
+                return;
+            }
+
             // Elevated helper mode: install the UIAccess hotkey broker, then exit. Runs before logging
             // (the main instance holds the log file) and before the single-instance handshake.
             if (args.Contains(Segra.Backend.Windows.Input.HotkeyBroker.HotkeyBrokerInstaller.InstallArgument))
@@ -117,7 +124,7 @@ namespace Segra.Backend.App
             WaitForPreviousInstance();
 
             // Try to create a named mutex - this will fail if another instance exists
-            singleInstanceMutex = new Mutex(true, "SegraApplicationMutex", out bool createdNew);
+            singleInstanceMutex = new Mutex(true, InstanceMutexName, out bool createdNew);
 
             if (!createdNew)
             {
@@ -409,6 +416,12 @@ namespace Segra.Backend.App
                     ShutdownMode = PhotinoShutdownMode.OnExplicitShutdown
                 };
 
+#if WINDOWS
+                App.Startup += (_, _) =>
+                {
+                    _ = Task.Run(() => Platform.Windows.WindowsQuitCommand.ListenAsync(InstanceMutexName, ExitApplication));
+                };
+#endif
                 if (!startMinimized)
                 {
                     App.Startup += (sender, eventArgs) => CreateWindow();
