@@ -32,6 +32,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       // Older frontend caches only contain file paths for screenshots.
       revived.screenshots = revived.screenshots.filter((item) => typeof item.title === 'string');
       // Do not restore live recording info from cache
+      revived.runningGame = null;
       revived.recording = undefined;
       revived.preRecording = undefined;
       revived.recordingPreviewEnabled = false;

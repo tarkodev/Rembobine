@@ -98,6 +98,12 @@ export interface Screenshot {
 export interface State {
   gpuVendor: GpuVendor;
   integratedGpuVendors: GpuVendor[];
+  runningGame?: {
+    pid: number;
+    name: string;
+    icon?: string | null;
+    customIcon?: string | null;
+  } | null;
   preRecording?: PreRecording;
   recording?: Recording;
   recordingPreviewEnabled: boolean;

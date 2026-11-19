@@ -1,5 +1,6 @@
 import { useSettings } from './Context/SettingsContext';
 import { useAppState } from './Context/AppStateContext';
+import GameIcon from './Components/GameIcon';
 import RecordingCard from './Components/RecordingCard';
 import CircularProgress from './Components/CircularProgress';
 import { sendMessageToBackend } from './Utils/MessageUtils';
@@ -50,7 +51,7 @@ const MENU_ICONS: Record<MenuItemId, LucideIcon> = {
 export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
   const settings = useSettings();
   const appState = useAppState();
-  const { hasLoadedObs, recording, preRecording, alwaysOnBufferActive } = appState;
+  const { hasLoadedObs, recording, preRecording, alwaysOnBufferActive, runningGame } = appState;
   const { updateInfo } = useUpdate();
   const { aiProgress } = useAiHighlights();
   const { obsDownloadProgress } = useObsDownload();
@@ -284,7 +285,29 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="flex flex-col items-center z-50">
+        <div className="flex flex-col items-center gap-2 z-50">
+          {runningGame && !recording && !preRecording && !appState.isFinishingRecording && (
+            <Button
+              variant="primary"
+              className="w-full h-12"
+              title={runningGame.name}
+              disabled={!hasLoadedObs || buttonCooldown}
+              onClick={() => {
+                setButtonCooldown(true);
+                setTimeout(() => setButtonCooldown(false), 1000);
+                sendMessageToBackend('StartRunningGame', { Pid: runningGame.pid });
+              }}
+            >
+              <GameIcon
+                key={runningGame.pid}
+                name={runningGame.name}
+                iconId={runningGame.icon}
+                customIcon={runningGame.customIcon}
+                size={20}
+              />
+              Display Game
+            </Button>
+          )}
           <Button
             variant="primary"
             className="w-full h-12"

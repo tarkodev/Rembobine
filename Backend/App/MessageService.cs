@@ -327,6 +327,11 @@ namespace Segra.Backend.App
                                 await HandleSelectGameExecutable(runningExePath.GetString());
                             }
                             break;
+                        case "StartRunningGame":
+                            if (root.TryGetProperty("Parameters", out var gameParams) &&
+                                gameParams.TryGetProperty("Pid", out var gamePid) && gamePid.TryGetInt32(out int pid))
+                                _ = Task.Run(() => GameDetectionService.StartRunningGame(pid));
+                            break;
                         case "StartRecording":
                             if (AppState.Instance.Recording != null || AppState.Instance.PreRecording != null)
                             {

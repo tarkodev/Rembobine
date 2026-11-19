@@ -20,6 +20,9 @@ namespace Segra.Backend.Core.Models
             + (excludeClips ? 0 : ClipsBytes + HighlightsBytes);
     }
 
+    internal sealed record RunningGame(int Pid, string Name, string? Icon, string? CustomIcon,
+        [property: JsonIgnore] string ExePath);
+
     internal class AppState : IDisposable
     {
         private static AppState _instance = new();
@@ -108,6 +111,18 @@ namespace Segra.Backend.Core.Models
                     _preRecording = value;
                     SendToFrontend("State update: PreRecording");
                 }
+            }
+        }
+
+        [JsonPropertyName("runningGame")]
+        public RunningGame? RunningGame
+        {
+            get;
+            set
+            {
+                if (field == value) return;
+                field = value;
+                SendToFrontend("State update: RunningGame");
             }
         }
 

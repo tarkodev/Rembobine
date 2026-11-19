@@ -9,7 +9,7 @@ import {
   RecordingMode,
 } from '../../Models/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Gamepad2, X, Plus, VolumeX, Volume2 } from 'lucide-react';
+import { Search, X, Plus, VolumeX, Volume2 } from 'lucide-react';
 import { useModal } from '../../Context/ModalContext';
 import { clampInt } from '../../Utils/NumberUtils';
 import CustomGameModal from '../CustomGameModal';
@@ -19,47 +19,7 @@ import RangeSlider from '../RangeSlider';
 import BitrateInput from './BitrateInput';
 import { useDeleteConfirmation } from '../../Hooks/useDeleteConfirmation';
 
-// Square game icon from the CDN, with a graceful fallback when there's no icon (custom games)
-// or the image fails to load.
-function GameIcon({
-  iconId,
-  customIcon,
-  name,
-  size = 40,
-}: {
-  iconId?: string | null;
-  customIcon?: string | null;
-  name: string;
-  size?: number;
-}) {
-  const [errored, setErrored] = useState(false);
-  const { airplaneMode } = useSettings();
-  // Prefer the catalog CDN icon; fall back to the exe-extracted base64 icon for custom games.
-  const src =
-    iconId && !airplaneMode
-      ? `https://segra.tv/api/games/icon/${iconId}`
-      : customIcon
-        ? `data:image/png;base64,${customIcon}`
-        : null;
-  const showImage = !!src && !errored;
-  return (
-    <div
-      className="rounded-md bg-base-200 flex items-center justify-center overflow-hidden flex-shrink-0"
-      style={{ width: size, height: size }}
-    >
-      {showImage ? (
-        <img
-          src={src}
-          alt={name}
-          className="w-full h-full object-cover"
-          onError={() => setErrored(true)}
-        />
-      ) : (
-        <Gamepad2 size={Math.round(size * 0.5)} className="text-base-content opacity-50" />
-      )}
-    </div>
-  );
-}
+import GameIcon from '../GameIcon';
 
 const presetSummary = (preset: VideoQualityPreset, maxDisplayHeight: number) =>
   ({

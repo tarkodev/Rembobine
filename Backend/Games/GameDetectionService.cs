@@ -24,6 +24,39 @@ namespace Segra.Backend.Games
         private static HashSet<int> _knownPids = new();
         private static System.Threading.Timer? _procPollTimer;
         private static int _pollInProgress;
+        // Written only by the process watcher, including its initial snapshot.
+        private static readonly Dictionary<int, RunningGame> _runningGames = new();
+
+        private static void TrackGame(int pid, string exePath)
+        {
+            if (IsIrrelevantProcessPath(exePath)) return;
+            var setting = GameSettingsService.FindForExePath(exePath);
+            if (setting == null && !GameUtils.IsGameExePath(exePath) &&
+                !(LauncherMarkers.Any(marker => exePath.Contains(marker, StringComparison.OrdinalIgnoreCase)) && IsDetectedGame(exePath)))
+                return;
+
+            string? localIcon = setting?.CustomIcon;
+#if WINDOWS
+            localIcon ??= IconUtils.ExtractExeIconBase64(exePath);
+#endif
+            _runningGames[pid] = new RunningGame(pid, setting?.Name ?? ExtractGameName(exePath),
+                GameUtils.GetIconFromExePath(exePath) ?? setting?.Icon, localIcon, exePath);
+        }
+
+        private static void PublishRunningGame(HashSet<int> livePids)
+        {
+            foreach (int pid in _runningGames.Keys.Where(pid => !livePids.Contains(pid)).ToArray())
+                _runningGames.Remove(pid);
+            AppState.Instance.RunningGame = _runningGames.Values.LastOrDefault();
+        }
+
+        public static void StartRunningGame(int pid)
+        {
+            var game = AppState.Instance.RunningGame;
+            if (game?.Pid != pid || !IsProcessRunning(pid) || ResolveProcessPath(pid) != game.ExePath) return;
+            StartGameRecording(pid, game.ExePath, userInitiated: true);
+        }
+
 #if !WINDOWS
         // Steam/Proton install dir of the game being recorded. Proton runs the game's Windows .exe under
         // Wine, so its Linux PIDs are volatile; every process in the session shares this path, so we track
@@ -119,6 +152,9 @@ namespace Segra.Backend.Games
 
             // Polled here because WMI process events make the WMI service enumerate every process each second
             _knownPids = EnumerateProcessIds();
+            foreach (int pid in _knownPids)
+                TrackGame(pid, ResolveProcessPath(pid));
+            PublishRunningGame(_knownPids);
             _procPollTimer = new System.Threading.Timer(_ => PollProcesses(), null, 1000, 1000);
 
             // Start periodic process scanning for games that might not trigger foreground events
@@ -148,6 +184,7 @@ namespace Segra.Backend.Games
                         HandleProcessStopped(pid);
                 }
 
+                PublishRunningGame(current);
                 _knownPids = current;
             }
             catch (Exception ex)
@@ -182,6 +219,9 @@ namespace Segra.Backend.Games
 
             // Seed the known-PID set so we don't treat already-running processes as "started".
             _knownPids = EnumerateProcPids();
+            foreach (int pid in _knownPids)
+                TrackGame(pid, ResolveProcessPath(pid));
+            PublishRunningGame(_knownPids);
 
             _procPollTimer = new System.Threading.Timer(_ => PollProc(), null, 1500, 1500);
             // Also keep the recording-alive watchdog running.
@@ -258,6 +298,7 @@ namespace Segra.Backend.Games
                 if (!current.SetEquals(_knownPids))
                     PreventRetryRecording = false;
 
+                PublishRunningGame(current);
                 _knownPids = current;
             }
             catch (Exception ex)
@@ -444,6 +485,7 @@ namespace Segra.Backend.Games
 
                 Log.Information($"[OnProcessStarted] Application started: PID {pid}, Path: {exePath}");
 
+                TrackGame(pid, exePath);
                 OBSService.OnVoiceChatAppStarted(exePath);
 
                 // Capture once: teardown can null PreRecording on another thread between the check and the dereference.
@@ -606,6 +648,8 @@ namespace Segra.Backend.Games
             return IsDetectedGame(exePath, fileDescription);
         }
 
+        private static readonly string[] LauncherMarkers = { "/steamapps/common/", "/EA Games/", "/Epic Games/", "/Ubisoft/", "/XboxGames/" };
+
         private static bool IsDetectedGame(string exePath, string? fileDescription = null)
         {
             string normalizedExePath = exePath.Replace("\\", "/");
@@ -633,15 +677,14 @@ namespace Segra.Backend.Games
             }
 
             // 6. Launcher-based detection (Steam, EA, Epic, Ubisoft, Xbox)
-            string[] launcherMarkers = { "/steamapps/common/", "/EA Games/", "/Epic Games/", "/Ubisoft/", "/XboxGames/" };
             string[] launcherNames = { "Steam", "EA", "Epic", "Ubisoft", "Xbox" };
 
-            for (int i = 0; i < launcherMarkers.Length; i++)
+            for (int i = 0; i < LauncherMarkers.Length; i++)
             {
-                int markerIndex = normalizedExePath.IndexOf(launcherMarkers[i], StringComparison.OrdinalIgnoreCase);
+                int markerIndex = normalizedExePath.IndexOf(LauncherMarkers[i], StringComparison.OrdinalIgnoreCase);
                 if (markerIndex < 0) continue;
 
-                int afterMarker = markerIndex + launcherMarkers[i].Length;
+                int afterMarker = markerIndex + LauncherMarkers[i].Length;
                 int nextSlash = normalizedExePath.IndexOf('/', afterMarker);
                 if (nextSlash < 0) continue;
 
