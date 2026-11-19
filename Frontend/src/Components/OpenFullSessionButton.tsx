@@ -2,14 +2,17 @@ import { useMemo, type RefObject } from 'react';
 import { Film } from 'lucide-react';
 import { useAppState } from '../Context/AppStateContext';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
+import { useSettings } from '../Context/SettingsContext';
 import { useRecordingSnapshot } from '../Hooks/useRecordingSnapshot';
 import { BookmarkType, type Content } from '../Models/types';
+import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
 import { timeStringToSeconds } from '../Utils/NumberUtils';
 import Button from './Button';
 
 interface OpenFullSessionButtonProps {
   bookmarkType: BookmarkType.ReplaySaved | BookmarkType.ScreenshotSaved | BookmarkType.ClipSaved;
   mediaId?: string;
+  previewUrl?: string;
   videoRef?: RefObject<HTMLVideoElement | null>;
   clipTime?: number;
   duration?: number;
@@ -18,11 +21,13 @@ interface OpenFullSessionButtonProps {
 export default function OpenFullSessionButton({
   bookmarkType,
   mediaId,
+  previewUrl,
   videoRef,
   clipTime,
   duration = Infinity,
 }: OpenFullSessionButtonProps) {
   const { content, recording } = useAppState();
+  const settings = useSettings();
   const { opening, openSnapshot } = useRecordingSnapshot();
   const { previousVideoId, openLinkedMedia } = useSelectedVideo();
   const links = useMemo(() => {
@@ -74,15 +79,22 @@ export default function OpenFullSessionButton({
     const time = clipTime === undefined ? undefined : (player?.currentTime ?? clipTime);
     const link = sessionAt(time);
     const playback = player ? { time: player.currentTime, paused: player.paused } : undefined;
+    const openInSession = (session: Content, sourceTime: number) => {
+      const startTime =
+        bookmarkType === BookmarkType.ClipSaved
+          ? sourceTime
+          : getBookmarkPlaybackStart(sourceTime, bookmarkType, session, settings);
+      openLinkedMedia({ type: 'video', video: session, previewUrl }, playback, startTime);
+    };
     if (link) {
       const elapsed =
         time === undefined ? 0 : Math.min(time - (link.offset ?? 0), link.length ?? 0);
-      openLinkedMedia({ type: 'video', video: link.session }, playback, link.sourceStart + elapsed);
+      openInSession(link.session, link.sourceStart + elapsed);
     } else if (liveBookmark && recording?.filePath) {
       const bookmarkTime = timeStringToSeconds(liveBookmark.time);
       openSnapshot(
         recording.filePath,
-        (session) => openLinkedMedia({ type: 'video', video: session }, playback, bookmarkTime),
+        (session) => openInSession(session, bookmarkTime),
         bookmarkTime,
       );
     }

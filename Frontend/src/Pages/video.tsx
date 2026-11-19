@@ -5,6 +5,7 @@ import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
 import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
+import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
 import { timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import type { LinkedMedia } from '../Context/SelectedVideoContext';
@@ -249,7 +250,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   } | null>(null);
 
   // Video state
-  const [currentTime, setCurrentTime] = useState(0);
   // Seed duration from content metadata so the timeline and waveform render
   // immediately; the video element refines it on loadedmetadata.
   const metadataDuration = useMemo(() => {
@@ -257,6 +257,10 @@ export default function VideoComponent({ video }: { video: Content }) {
     return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
   }, [video.duration]);
   const [duration, setDuration] = useState(metadataDuration);
+  const requestedTime = Math.max(0, resumePlayback?.time || 0);
+  const [currentTime, setCurrentTime] = useState(() =>
+    Math.min(requestedTime, metadataDuration || Infinity),
+  );
   useEffect(() => {
     setDuration(metadataDuration);
   }, [video.id, metadataDuration]);
@@ -417,7 +421,18 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Container state
   const [containerWidth, setContainerWidth] = useState(0);
   const [isPlaying, setIsPlaying] = useState(resumePlayback ? !resumePlayback.paused : true);
-  const playbackRestored = useRef(false);
+  const initialSeekStarted = useRef(false);
+  const [waitingForFrame, setWaitingForFrame] = useState(!!resumePlayback);
+  const revealResumeFrame = (player: HTMLVideoElement) => {
+    if (
+      waitingForFrame &&
+      initialSeekStarted.current &&
+      !player.seeking &&
+      player.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+    ) {
+      setWaitingForFrame(false);
+    }
+  };
   const [bookmarkMenu, setBookmarkMenu] = useState<{
     bookmark: Bookmark;
     trigger: HTMLElement;
@@ -808,7 +823,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     const tick = () => {
       // While resizing a segment the video previews the dragged edge; the
       // playhead must not follow it.
-      if (resizeDirectionRef.current == null) {
+      if (resizeDirectionRef.current == null && (!resumePlayback || initialSeekStarted.current)) {
         setCurrentTime(vid.currentTime);
       }
 
@@ -856,16 +871,13 @@ export default function VideoComponent({ video }: { video: Content }) {
   }, []);
 
   // Update container width on window resize
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      setContainerWidth(scrollContainerRef.current.clientWidth);
-    }
-
+  useLayoutEffect(() => {
     const handleResize = () => {
       if (scrollContainerRef.current) {
         setContainerWidth(scrollContainerRef.current.clientWidth);
       }
     };
+    handleResize();
 
     const preventPageZoom = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -2104,21 +2116,8 @@ export default function VideoComponent({ video }: { video: Content }) {
     return timelineBookmarks.filter((bookmark) => selectedBookmarkTypes.has(bookmark.type));
   }, [timelineBookmarks, selectedBookmarkTypes]);
 
-  // Same lead-in as highlights, including the per-game override
-  const highlightPaddingBefore = useMemo(() => {
-    const game = settings.games.find(
-      (g) =>
-        (g.igdbId != null && g.igdbId === video.igdbId) ||
-        g.name.toLowerCase() === video.game?.toLowerCase(),
-    );
-    return game?.highlightPaddingOverride?.before ?? settings.highlightPaddingBefore;
-  }, [settings.games, settings.highlightPaddingBefore, video.igdbId, video.game]);
-
-  const bookmarkStartTime = (bookmark: Bookmark) => {
-    const time = timeStringToSeconds(bookmark.time);
-    const lead = bookmark.type === BookmarkType.Manual ? 10 : highlightPaddingBefore;
-    return Math.max(0, time - lead);
-  };
+  const bookmarkStartTime = (bookmark: Bookmark) =>
+    getBookmarkPlaybackStart(timeStringToSeconds(bookmark.time), bookmark.type, video, settings);
 
   const seekToBookmark = (bookmark: Bookmark) => {
     const seekTo = bookmarkStartTime(bookmark);
@@ -2357,29 +2356,35 @@ export default function VideoComponent({ video }: { video: Content }) {
               <div className={videoWrapperClassName}>
                 <video
                   autoPlay={!resumePlayback}
+                  preload={resumePlayback ? 'auto' : undefined}
                   crossOrigin="anonymous"
                   className="w-full h-full object-contain"
                   src={getVideoPath()}
                   ref={videoRef}
-                  onError={(e) =>
+                  onError={(e) => {
+                    setWaitingForFrame(false);
                     setVideoUndecodable(
                       e.currentTarget.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED,
-                    )
-                  }
+                    );
+                  }}
                   onLoadedMetadata={(e) => {
                     const player = e.currentTarget;
                     setVideoUndecodable(player.videoWidth === 0);
-                    if (!resumePlayback || playbackRestored.current || !player.videoWidth) return;
+                    if (!resumePlayback || initialSeekStarted.current || !player.videoWidth) return;
 
-                    playbackRestored.current = true;
-                    player.currentTime = Math.min(resumePlayback.time, player.duration);
-                    setCurrentTime(player.currentTime);
+                    const target = Math.min(requestedTime, player.duration);
+                    initialSeekStarted.current = true;
+                    if (player.currentTime !== target) player.currentTime = target;
+                    setCurrentTime(target);
+                    revealResumeFrame(player);
                     if (!resumePlayback.paused) {
                       void player.play().catch(() => setIsPlaying(false));
                     }
                   }}
+                  onLoadedData={(e) => revealResumeFrame(e.currentTarget)}
                   onPlay={(e) => videoUndecodable && e.currentTarget.pause()}
                   onSeeked={(e) => {
+                    revealResumeFrame(e.currentTarget);
                     if (e.currentTarget.paused && resizeDirectionRef.current == null) {
                       setCurrentTime(e.currentTarget.currentTime);
                     }
@@ -2416,6 +2421,22 @@ export default function VideoComponent({ video }: { video: Content }) {
                       updateSettings({ webcamX: x, webcamY: y, webcamSize: size })
                     }
                   />
+                )}
+                {waitingForFrame && !videoUndecodable && (
+                  <div
+                    className="absolute inset-0 grid place-items-center bg-base-300"
+                    role="status"
+                    aria-label="Loading video"
+                  >
+                    <span className="loading loading-spinner" />
+                    {resumePlayback?.previewUrl && (
+                      <img
+                        src={resumePlayback.previewUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-contain"
+                      />
+                    )}
+                  </div>
                 )}
                 {videoUndecodable && (
                   <HevcExtensionWarning variant="player" className="absolute inset-0 z-10 p-4" />
@@ -2899,11 +2920,13 @@ export default function VideoComponent({ video }: { video: Content }) {
                     </div>
                   );
                 })}
-                <div
-                  className="absolute top-0 left-0 z-10 w-1 h-full -translate-x-1/2 rounded-sm shadow cursor-pointer marker bg-accent"
-                  style={{ left: `${currentTime * pixelsPerSecond}px` }}
-                  onMouseDown={handleMarkerDragStart}
-                />
+                {bookmarksReady && (
+                  <div
+                    className="absolute top-0 left-0 z-10 w-1 h-full -translate-x-1/2 rounded-sm shadow cursor-pointer marker bg-accent"
+                    style={{ left: `${currentTime * pixelsPerSecond}px` }}
+                    onMouseDown={handleMarkerDragStart}
+                  />
+                )}
               </div>
               {/* Drawn over the timeline from its outer edges, so the outlines sit on its border at any display scale */}
               {bookmarksReady && matchRanges.length > 0 && (

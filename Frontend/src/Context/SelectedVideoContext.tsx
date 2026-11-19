@@ -2,7 +2,8 @@ import { createContext, useContext, useState, ReactNode, useCallback } from 'rea
 import type { Content, Screenshot } from '../Models/types';
 
 export type LinkedMedia =
-  { type: 'video'; video: Content } | { type: 'screenshot'; screenshot: Screenshot };
+  | { type: 'video'; video: Content; previewUrl?: string }
+  | { type: 'screenshot'; screenshot: Screenshot };
 
 export interface PlaybackPosition {
   time: number;
@@ -13,7 +14,7 @@ interface VideoSelection {
   video: Content | null;
   playlist: string[];
   screenshot?: Screenshot;
-  resume?: PlaybackPosition;
+  resume?: PlaybackPosition & { previewUrl?: string };
   previous?: VideoSelection;
 }
 
@@ -22,7 +23,7 @@ interface SelectedVideoContextProps {
   linkedScreenshot: Screenshot | null;
   // Ids of the list the video was opened from, for previous/next navigation
   playlist: string[];
-  resumePlayback?: PlaybackPosition;
+  resumePlayback?: VideoSelection['resume'];
   setSelectedVideo: (video: Content | null, playlist?: string[]) => void;
   previousVideoId?: string;
   openLinkedMedia: (media: LinkedMedia, playback?: PlaybackPosition, startTime?: number) => void;
@@ -50,7 +51,11 @@ export const SelectedVideoProvider = ({ children }: { children: ReactNode }) => 
         resume:
           startTime === undefined
             ? undefined
-            : { time: startTime, paused: playback?.paused ?? true },
+            : {
+                time: startTime,
+                paused: playback?.paused ?? true,
+                previewUrl: media.type === 'video' ? media.previewUrl : undefined,
+              },
         previous: playback ? { ...current, resume: playback } : current,
       }));
     },

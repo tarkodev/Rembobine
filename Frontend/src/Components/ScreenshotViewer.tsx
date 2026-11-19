@@ -227,6 +227,7 @@ export default function ScreenshotViewer({
               key={screenshot.filePath}
               bookmarkType={BookmarkType.ScreenshotSaved}
               mediaId={getScreenshotMediaId(screenshot)}
+              previewUrl={getContentFileUrl(screenshot.filePath)}
             />
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
