@@ -7,6 +7,8 @@ focused on gameplay screenshots and more control over recording and playback.
 
 - [ ] Add a **Trash** view for manually deleted videos and screenshots. Restore an item to its original
   library with its title and bookmarks, including links from source sessions. Empty the trash to free disk space.
+- [ ] Add **Albums** so users can group videos and screenshots into named collections.
+- [ ] Add **Favorites** so users can mark videos and screenshots as favorites and browse them together.
 - [ ] Track videos and screenshots renamed or moved within the library in File Explorer. Preserve custom titles,
   bookmarks, and links to and from Full Sessions.
 - [ ] Automatically update the library when videos or screenshots are added or deleted in File Explorer,
