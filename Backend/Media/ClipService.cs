@@ -58,6 +58,11 @@ namespace Segra.Backend.Media
                 foreach (var segment in segments)
                     bookmarks.Track(segment);
                 var completedClips = new List<(string Id, List<Segment> Segments)>();
+                // Keep the live snapshot available even if its viewer closes while FFmpeg is running.
+                var recordingSources = Settings.Instance.ClipUseRecordingEndTime
+                    ? SourceContent().Where(c => c.Type is Content.ContentType.Session or Content.ContentType.Buffer).ToLookup(c => c.Id)
+                    : null;
+                DateTime? combinedEndTime = null;
 
                 // Use game from first segment for the output folder
                 var firstSegment = segments.FirstOrDefault();
@@ -169,17 +174,19 @@ namespace Segra.Backend.Media
 
                 if (createSeparateClips)
                 {
-                    string batchTimestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+                    DateTime batchTimestamp = DateTime.Now;
                     for (int i = 0; i < tempClipFiles.Count; i++)
                     {
                         var segment = extractedSegments[i];
                         string segmentOutputFolder = StorageService.GetOutputFolder(PathUtils.Combine(videoFolder, FolderNames.Clips), segment.Game);
                         Directory.CreateDirectory(segmentOutputFolder);
 
-                        string outputFileName = $"{batchTimestamp}_segment-{i + 1:000}.mp4";
-                        string segmentOutputFilePath = GetUniqueOutputFilePath(PathUtils.Combine(segmentOutputFolder, outputFileName));
+                        DateTime? segmentEndTime = GetRecordingEndTime(recordingSources, segment);
+                        string timestamp = (segmentEndTime ?? batchTimestamp).ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+                        string outputFileName = $"{timestamp}_segment-{i + 1:000}.mp4";
+                        string segmentOutputFilePath = ReserveOutputFilePath(PathUtils.Combine(segmentOutputFolder, outputFileName));
                         outputFilePaths.Add(segmentOutputFilePath);
-                        File.Move(tempClipFiles[i], segmentOutputFilePath);
+                        File.Move(tempClipFiles[i], segmentOutputFilePath, overwrite: true);
                         tempClipFiles[i] = string.Empty;
 
                         await EnsureFileReady(segmentOutputFilePath);
@@ -189,7 +196,7 @@ namespace Segra.Backend.Media
                         var segmentAudioTrackTypes = Settings.Instance.ClipKeepSeparateAudioTracks
                             ? extractedSegmentTrackTypes[i]
                             : null;
-                        string? segmentClipId = await ContentService.CreateMetadataFile(segmentOutputFilePath, Content.ContentType.Clip, segment.Game ?? "Unknown", null, segment.Title, igdbId: segment.IgdbId, audioTrackNames: segmentAudioTrackNames, audioTrackTypes: segmentAudioTrackTypes, gameExePath: GetSourceGameExePath(segment));
+                        string? segmentClipId = await ContentService.CreateMetadataFile(segmentOutputFilePath, Content.ContentType.Clip, segment.Game ?? "Unknown", null, segment.Title, createdAt: segmentEndTime, igdbId: segment.IgdbId, audioTrackNames: segmentAudioTrackNames, audioTrackTypes: segmentAudioTrackTypes, gameExePath: GetSourceGameExePath(segment), exportedAt: segmentEndTime.HasValue ? DateTime.Now : null);
                         if (segmentClipId != null)
                             completedClips.Add((segmentClipId, [segment]));
                         await ContentService.CreateThumbnail(segmentOutputFilePath, Content.ContentType.Clip, segmentClipId);
@@ -198,13 +205,14 @@ namespace Segra.Backend.Media
                 }
                 else
                 {
-                    string outputFileName = $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4";
-                    outputFilePath = GetUniqueOutputFilePath(PathUtils.Combine(outputFolder, outputFileName));
+                    combinedEndTime = GetRecordingEndTime(recordingSources, extractedSegments[^1]);
+                    string outputFileName = $"{combinedEndTime ?? DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4";
+                    outputFilePath = ReserveOutputFilePath(PathUtils.Combine(outputFolder, outputFileName));
                     outputFilePaths.Add(outputFilePath);
 
                     if (tempClipFiles.Count == 1)
                     {
-                        File.Move(tempClipFiles[0], outputFilePath);
+                        File.Move(tempClipFiles[0], outputFilePath, overwrite: true);
                         tempClipFiles.Clear();
                     }
                     else
@@ -259,19 +267,19 @@ namespace Segra.Backend.Media
 
                 if (!createSeparateClips)
                 {
-                    if (!File.Exists(outputFilePath))
+                    if (new FileInfo(outputFilePath!).Length == 0)
                     {
                         throw new Exception("Failed to create final clip file");
                     }
 
-                    await EnsureFileReady(outputFilePath);
+                    await EnsureFileReady(outputFilePath!);
                 }
 
                 _ = MessageService.SendFrontendMessage("ClipProgress", new { id, progress = 98, segments });
 
                 if (!createSeparateClips)
                 {
-                    string? clipId = await ContentService.CreateMetadataFile(outputFilePath!, Content.ContentType.Clip, firstSegment?.Game!, null, firstSegment?.Title, igdbId: firstSegment?.IgdbId, audioTrackNames: unionAudioLayout, audioTrackTypes: unionAudioTrackTypes, gameExePath: firstSegment != null ? GetSourceGameExePath(firstSegment) : null);
+                    string? clipId = await ContentService.CreateMetadataFile(outputFilePath!, Content.ContentType.Clip, firstSegment?.Game!, null, firstSegment?.Title, createdAt: combinedEndTime, igdbId: firstSegment?.IgdbId, audioTrackNames: unionAudioLayout, audioTrackTypes: unionAudioTrackTypes, gameExePath: firstSegment != null ? GetSourceGameExePath(firstSegment) : null, exportedAt: combinedEndTime.HasValue ? DateTime.Now : null);
                     if (clipId != null)
                         completedClips.Add((clipId, extractedSegments));
                     await ContentService.CreateThumbnail(outputFilePath!, Content.ContentType.Clip, clipId);
@@ -282,7 +290,6 @@ namespace Segra.Backend.Media
 
                 // The batch is complete. A later notification failure must not remove linked clips.
                 outputFilePaths.Clear();
-                outputFilePath = null;
                 await bookmarks.SaveAsync(completedClips);
 
                 // Load silently then await the state send before progress=100 removes the loading card,
@@ -311,11 +318,6 @@ namespace Segra.Backend.Media
                     Log.Error($"[Clip {id}] Stack trace: {ex.StackTrace}");
                 }
 
-                // Clean up any partially created output file
-                if (!string.IsNullOrEmpty(outputFilePath))
-                {
-                    SafeDelete(outputFilePath);
-                }
                 outputFilePaths.ForEach(SafeDelete);
 
                 if (!wasCancelled)
@@ -396,7 +398,7 @@ namespace Segra.Backend.Media
                 Content first = sessions[0];
                 string outputFolder = StorageService.GetOutputFolder(PathUtils.Combine(Settings.Instance.ContentFolder, FolderNames.Sessions), first.Game);
                 Directory.CreateDirectory(outputFolder);
-                outputFilePath = GetUniqueOutputFilePath(PathUtils.Combine(outputFolder, $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4"));
+                outputFilePath = ReserveOutputFilePath(PathUtils.Combine(outputFolder, $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4"));
 
                 concatFilePath = PathUtils.Combine(Path.GetTempPath(), $"concat_list_{Guid.NewGuid()}.txt");
                 await File.WriteAllLinesAsync(concatFilePath, sessions.Select(s => FFmpegService.BuildConcatListLine(s.FilePath)));
@@ -426,7 +428,7 @@ namespace Segra.Backend.Media
                     }
                 }
 
-                if (!File.Exists(outputFilePath))
+                if (new FileInfo(outputFilePath).Length == 0)
                     throw new Exception("Failed to create the merged session");
                 await EnsureFileReady(outputFilePath);
                 await SendProgress(97);
@@ -441,7 +443,8 @@ namespace Segra.Backend.Media
                     offset += session.Duration;
                 }
 
-                string? sessionId = await ContentService.CreateMetadataFile(outputFilePath, Content.ContentType.Session, first.Game, bookmarks, igdbId: first.IgdbId, audioTrackNames: first.AudioTrackNames, audioTrackTypes: first.AudioTrackTypes, gameExePath: first.GameExePath, matches: matches);
+                // A joined session can contain gaps or reordered recordings, so its export time cannot anchor its timeline.
+                string? sessionId = await ContentService.CreateMetadataFile(outputFilePath, Content.ContentType.Session, first.Game, bookmarks, igdbId: first.IgdbId, audioTrackNames: first.AudioTrackNames, audioTrackTypes: first.AudioTrackTypes, gameExePath: first.GameExePath, matches: matches, exportedAt: DateTime.Now);
                 await ContentService.CreateThumbnail(outputFilePath, Content.ContentType.Session, sessionId);
                 await ContentService.CreateWaveformFile(outputFilePath, Content.ContentType.Session, sessionId);
                 await SendProgress(99);
@@ -1136,6 +1139,21 @@ namespace Segra.Backend.Media
         private static IEnumerable<Content> SourceContent() =>
             MessageService.LiveContent is Content live ? AppState.Instance.Content.Append(live) : AppState.Instance.Content;
 
+        private static DateTime? GetRecordingEndTime(ILookup<string, Content>? sources, Segment segment)
+        {
+            if (sources == null || segment.ContentId == null || !double.IsFinite(segment.EndTime) || segment.EndTime < 0)
+                return null;
+
+            var source = sources[segment.ContentId].FirstOrDefault();
+            if (source?.GetRecordingStartTime() is not DateTime start || source.Duration <= TimeSpan.Zero)
+                return null;
+
+            // FFmpeg stops at EOF if the selection extends beyond the source.
+            TimeSpan endOffset = segment.EndTime >= source.Duration.TotalSeconds
+                ? source.Duration : TimeSpan.FromSeconds(segment.EndTime);
+            return endOffset <= DateTime.MaxValue - start ? start.Add(endOffset).ToLocalTime() : null;
+        }
+
         private static List<string>? GetSourceAudioTrackNames(Segment segment)
         {
             try
@@ -1255,20 +1273,26 @@ namespace Segra.Backend.Media
             catch (Exception ex) { Log.Information($"Error deleting file {path}: {ex.Message}"); }
         }
 
-        private static string GetUniqueOutputFilePath(string filePath)
+        private static string ReserveOutputFilePath(string filePath)
         {
-            if (!File.Exists(filePath))
-                return filePath;
-
             string directory = Path.GetDirectoryName(filePath) ?? string.Empty;
             string fileName = Path.GetFileNameWithoutExtension(filePath);
             string extension = Path.GetExtension(filePath);
 
-            for (int i = 1; ; i++)
+            for (int i = 0; ; i++)
             {
-                string candidate = PathUtils.Combine(directory, $"{fileName}_{i}{extension}");
-                if (!File.Exists(candidate))
+                string candidate = i == 0 ? filePath : PathUtils.Combine(directory, $"{fileName}_{i}{extension}");
+                if (File.Exists(candidate)) continue;
+                try
+                {
+                    using var reservation = File.OpenHandle(candidate, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
                     return candidate;
+                }
+                // EEXIST on Unix, ERROR_FILE_EXISTS / ERROR_ALREADY_EXISTS on Windows.
+                catch (IOException ex) when ((ex.HResult & 0xffff) is 17 or 80 or 183)
+                {
+                    continue;
+                }
             }
         }
 

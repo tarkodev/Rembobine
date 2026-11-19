@@ -164,7 +164,8 @@ namespace Segra.Backend.Media
 
                 string? id = await ContentService.CreateMetadataFile(part.FilePath!, Content.ContentType.Session, session.Game, partBookmarks,
                     createdAt: session.StartTime + part.End, igdbId: igdbId, audioTrackNames: session.AudioTrackNames, audioTrackTypes: session.AudioTrackTypes,
-                    gameExePath: session.ExePath, webcam: part.Webcam, matches: [partMatch]);
+                    gameExePath: session.ExePath, webcam: part.Webcam, matches: [partMatch],
+                    recordingStartedAt: session.StartTime.ToUniversalTime() + part.Origin);
                 if (id == null)
                 {
                     ContentService.DeleteWebcamFile(part.Webcam?.FilePath);

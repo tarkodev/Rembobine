@@ -382,6 +382,12 @@ namespace Segra.Backend.Core
                 hasChanges = true;
             }
 
+            if (settings.ClipUseRecordingEndTime != updatedSettings.ClipUseRecordingEndTime)
+            {
+                settings.ClipUseRecordingEndTime = updatedSettings.ClipUseRecordingEndTime;
+                hasChanges = true;
+            }
+
             if (settings.ClipKeepSeparateAudioTracks != updatedSettings.ClipKeepSeparateAudioTracks)
             {
                 Log.Information($"ClipKeepSeparateAudioTracks changed from '{settings.ClipKeepSeparateAudioTracks}' to '{updatedSettings.ClipKeepSeparateAudioTracks}'");

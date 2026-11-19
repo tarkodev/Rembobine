@@ -364,7 +364,7 @@ namespace Segra.Backend.Recorder
                 WebcamLayer? webcam = await FinishWebcamLayer(recording?.Webcam, webcamPath, savedPath);
 
                 // Create metadata for the buffer recording
-                string? bufferId = await ContentService.CreateMetadataFile(savedPath, Content.ContentType.Buffer, request.Game, igdbId: request.IgdbId, audioTrackNames: request.AudioTrackNames, audioTrackTypes: request.AudioTrackTypes, gameExePath: request.ExePath, webcam: webcam);
+                string? bufferId = await ContentService.CreateMetadataFile(savedPath, Content.ContentType.Buffer, request.Game, igdbId: request.IgdbId, audioTrackNames: request.AudioTrackNames, audioTrackTypes: request.AudioTrackTypes, gameExePath: request.ExePath, webcam: webcam, replayEndedAt: requestedAt);
                 bookmark?.Complete(bufferId);
                 if (bufferId == null)
                     ContentService.DeleteWebcamFile(webcam?.FilePath);
@@ -2540,7 +2540,7 @@ namespace Segra.Backend.Recorder
                         }
                         else
                         {
-                            string? sessionContentId = await ContentService.CreateMetadataFile(filePath, Content.ContentType.Session, session.Game, bookmarks, igdbId: igdbId, audioTrackNames: session.AudioTrackNames, audioTrackTypes: session.AudioTrackTypes, gameExePath: session.ExePath, webcam: webcam, matches: session.GetMatches());
+                            string? sessionContentId = await ContentService.CreateMetadataFile(filePath, Content.ContentType.Session, session.Game, bookmarks, igdbId: igdbId, audioTrackNames: session.AudioTrackNames, audioTrackTypes: session.AudioTrackTypes, gameExePath: session.ExePath, webcam: webcam, matches: session.GetMatches(), recordingStartedAt: session.StartTime);
                             if (sessionContentId == null)
                                 ContentService.DeleteWebcamFile(webcam?.FilePath);
                             else

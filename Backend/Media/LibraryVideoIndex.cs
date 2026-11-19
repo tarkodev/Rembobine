@@ -275,6 +275,8 @@ internal sealed class LibraryVideoIndex
             FileSizeKb = length / 1024,
             Duration = duration,
             CreatedAt = embedded?.CreatedAt ?? File.GetCreationTime(path),
+            RecordingStartedAt = embedded?.RecordingStartedAt,
+            ExportedAt = embedded?.ExportedAt,
             LibraryFileIdentity = identity,
             IgdbId = embedded?.IgdbId,
             GameExePath = embedded?.GameExePath,
@@ -326,6 +328,7 @@ internal sealed class LibraryVideoIndex
             MoveAsset(FolderNames.GetThumbnailFilePath(item.Type, item.Id), FolderNames.GetThumbnailFilePath(type, item.Id));
             MoveAsset(FolderNames.GetWaveformFilePath(item.Type, item.Id), FolderNames.GetWaveformFilePath(type, item.Id));
         }
+        current.RecordingStartedAt ??= current.GetRecordingStartTime();
         current.Type = type;
         current.FilePath = path;
         current.FileName = Path.GetFileNameWithoutExtension(path);

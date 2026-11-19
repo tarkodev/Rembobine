@@ -184,6 +184,7 @@ namespace Segra.Backend.Media
                 string? game = originalContent.Game;
 
                 bool removeOriginal = Settings.Instance.RemoveOriginalAfterCompression;
+                var recordingStartedAt = originalContent.GetRecordingStartTime();
                 if (removeOriginal)
                 {
                     // Delete first so the compressed file can take over the original name and its
@@ -199,7 +200,8 @@ namespace Segra.Backend.Media
                     ? $"Replaced original with compressed file: {finalPath}"
                     : $"Saved compressed file as: {finalPath}");
 
-                string? compressedId = await ContentService.CreateMetadataFile(finalPath, contentType, game ?? "Unknown", originalContent.Bookmarks, originalContent.Title, originalContent.CreatedAt, originalContent.IgdbId, originalContent.IsImported, audioTrackNames, originalContent.AudioTrackTypes, compressed: true, gameExePath: originalContent.GameExePath, webcam: removeOriginal ? originalContent.Webcam : null, matches: originalContent.Matches);
+                string? compressedId = await ContentService.CreateMetadataFile(finalPath, contentType, game ?? "Unknown", originalContent.Bookmarks, originalContent.Title, originalContent.CreatedAt, originalContent.IgdbId, originalContent.IsImported, audioTrackNames, originalContent.AudioTrackTypes, compressed: true, gameExePath: originalContent.GameExePath, webcam: removeOriginal ? originalContent.Webcam : null, matches: originalContent.Matches,
+                    recordingStartedAt: recordingStartedAt, exportedAt: originalContent.ExportedAt);
                 await ContentService.CreateThumbnail(finalPath, contentType, compressedId);
                 await ContentService.CreateWaveformFile(finalPath, contentType, compressedId);
 

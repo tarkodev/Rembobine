@@ -1097,6 +1097,7 @@ namespace Segra.Backend.App
                     FileSize = $"{dataLength / 1048576.0:F0} MB",
                     Duration = duration,
                     CreatedAt = recording.StartTime,
+                    RecordingStartedAt = recording.StartTime.ToUniversalTime(),
                     AudioTrackNames = recording.AudioTrackNames,
                     AudioTrackTypes = recording.AudioTrackTypes,
                 };

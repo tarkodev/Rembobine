@@ -236,8 +236,12 @@ namespace Segra.Backend.Windows.Storage
                 bool includeClips = settings.AutoDeleteClipsAndHighlights;
                 // Skips files written in the last hour since they are likely still in use
                 List<Content> expired = AppState.Instance.Content.ToList()
-                    .Where(c => (includeClips || c.Type is Content.ContentType.Session or Content.ContentType.Buffer) && !c.IsImported && c.CreatedAt != default && c.CreatedAt < cutoff
-                        && File.GetLastWriteTime(c.FilePath) < oneHourAgo)
+                    .Where(c =>
+                    {
+                        DateTime savedAt = c.ExportedAt ?? c.CreatedAt;
+                        return (includeClips || c.Type is Content.ContentType.Session or Content.ContentType.Buffer)
+                            && !c.IsImported && savedAt != default && savedAt < cutoff && File.GetLastWriteTime(c.FilePath) < oneHourAgo;
+                    })
                     .ToList();
 
                 if (expired.Count == 0)

@@ -2,6 +2,7 @@ using Serilog;
 using Segra.Backend.App;
 using Segra.Backend.Media;
 using Segra.Backend.Platform;
+using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -811,6 +812,9 @@ namespace Segra.Backend.Core.Models
             }
         }
 
+        [JsonPropertyName("clipUseRecordingEndTime")]
+        public bool ClipUseRecordingEndTime { get; set; }
+
         [JsonPropertyName("clipKeepSeparateAudioTracks")]
         public bool ClipKeepSeparateAudioTracks
         {
@@ -1511,6 +1515,51 @@ namespace Segra.Backend.Core.Models
         public TimeSpan Duration { get; set; }
 
         public DateTime CreatedAt { get; set; }
+
+        // UTC instant corresponding to frame zero of a session or replay.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? RecordingStartedAt { get; set; }
+
+        // Kept separately when the date shown in the library comes from the footage.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? ExportedAt { get; set; }
+
+        internal DateTime? GetRecordingStartTime()
+        {
+            if (Type is not (ContentType.Session or ContentType.Buffer)) return null;
+            if (RecordingStartedAt.HasValue) return RecordingStartedAt.Value.ToUniversalTime();
+            if (IsImported || ExportedAt.HasValue || CreatedAt == default || Duration <= TimeSpan.Zero) return null;
+
+            // Older native metadata was dated just after finalization. Check that against an
+            // independent timestamp before trusting a filename, a renamed file or a merged session.
+            long expectedStart = CreatedAt.ToUniversalTime().Ticks - Duration.Ticks;
+            if (expectedStart < 0) return null;
+            DateTime? CorroboratedStart(long ticks) =>
+                ticks >= 0 && Math.Abs(ticks - expectedStart) <= 5 * TimeSpan.TicksPerSecond
+                    ? new DateTime(ticks, DateTimeKind.Utc) : null;
+
+            // OBS names sessions at their start and replays at the save request.
+            long replayLength = Type == ContentType.Buffer ? Duration.Ticks : 0;
+            if (DateTime.TryParseExact(FileName, "yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeLocal | DateTimeStyles.AdjustToUniversal, out var namedAt))
+            {
+                long start = namedAt.Ticks - replayLength;
+                // Older per-match sessions are named at match start, after any retained preroll.
+                if (Type == ContentType.Session && Matches is [var match] && match.StartTime > TimeSpan.Zero &&
+                    match.StartTime <= Duration && Math.Abs(start - match.StartTime.Ticks - expectedStart) < Math.Abs(start - expectedStart))
+                    start -= match.StartTime.Ticks;
+                if (CorroboratedStart(start) is DateTime namedStart) return namedStart;
+            }
+
+            try
+            {
+                return File.Exists(FilePath) ? CorroboratedStart(File.GetCreationTimeUtc(FilePath).Ticks - replayLength) : null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
 
         public string? UploadUrl { get; set; }
 

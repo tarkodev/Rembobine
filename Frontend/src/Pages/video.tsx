@@ -2339,6 +2339,7 @@ export default function VideoComponent({ video }: { video: Content }) {
         <div className="flex flex-col flex-1 w-full h-full p-4 pb-3 overflow-hidden lg:w-3/4">
           <MediaInfoBar
             createdAt={video.createdAt}
+            recordedEnd={video.type === 'Clip' && !!video.exportedAt}
             fileSize={video.fileSize}
             filePath={video.filePath}
             game={video.game}

@@ -36,7 +36,7 @@ namespace Segra.Backend.Media
         /// Writes the metadata file for a video and returns the new content id, or null when it could not be written.
         /// The id is the file name of the metadata, thumbnail and waveform files.
         /// </summary>
-        public static async Task<string?> CreateMetadataFile(string filePath, Content.ContentType type, string game, List<Bookmark>? bookmarks = null, string? title = null, DateTime? createdAt = null, int? igdbId = null, bool isImported = false, List<string>? audioTrackNames = null, List<string>? audioTrackTypes = null, bool compressed = false, string? gameExePath = null, WebcamLayer? webcam = null, List<GameMatch>? matches = null)
+        public static async Task<string?> CreateMetadataFile(string filePath, Content.ContentType type, string game, List<Bookmark>? bookmarks = null, string? title = null, DateTime? createdAt = null, int? igdbId = null, bool isImported = false, List<string>? audioTrackNames = null, List<string>? audioTrackTypes = null, bool compressed = false, string? gameExePath = null, WebcamLayer? webcam = null, List<GameMatch>? matches = null, DateTime? recordingStartedAt = null, DateTime? replayEndedAt = null, DateTime? exportedAt = null)
         {
             bookmarks ??= [];
             filePath = PathUtils.Normalize(filePath);
@@ -64,6 +64,8 @@ namespace Segra.Backend.Media
                 var (displaySize, sizeKb) = GetFileSize(filePath);
 
                 var duration = await GetVideoDurationAsync(filePath);
+                if (replayEndedAt.HasValue && duration > TimeSpan.Zero)
+                    recordingStartedAt = replayEndedAt.Value.ToUniversalTime() - duration;
                 var metadataContent = new Content
                 {
                     LibraryFileIdentity = LibraryVideoIndex.ReadIdentity(filePath),
@@ -77,6 +79,8 @@ namespace Segra.Backend.Media
                     FileSize = displaySize,
                     FileSizeKb = sizeKb,
                     CreatedAt = createdAt ?? DateTime.Now,
+                    RecordingStartedAt = recordingStartedAt?.ToUniversalTime(),
+                    ExportedAt = exportedAt,
                     Duration = duration,
                     AudioTrackNames = audioTrackNames,
                     AudioTrackTypes = audioTrackTypes,
@@ -1077,9 +1081,16 @@ namespace Segra.Backend.Media
                     string newFileName = currentContent.FileName;
                     string newFilePath = currentContent.FilePath;
 
-                    string targetFileName = string.IsNullOrWhiteSpace(newTitle)
-                        ? (currentContent.CreatedAt.AddTicks(-(currentContent.CreatedAt.Ticks % TimeSpan.TicksPerSecond)) - currentContent.Duration).ToString("yyyy-MM-dd_HH-mm-ss")
-                        : SanitizeFileName(newTitle);
+                    // Preserve a legacy recording's time before its timestamped filename changes.
+                    var recordingStartedAt = currentContent.GetRecordingStartTime();
+                    string targetFileName = SanitizeFileName(newTitle);
+                    if (string.IsNullOrWhiteSpace(newTitle))
+                    {
+                        var filenameTime = currentContent.CreatedAt;
+                        if (currentContent.Type != Content.ContentType.Clip || currentContent.ExportedAt == null)
+                            filenameTime = filenameTime.AddTicks(-(filenameTime.Ticks % TimeSpan.TicksPerSecond)) - currentContent.Duration;
+                        targetFileName = filenameTime.ToString("yyyy-MM-dd_HH-mm-ss");
+                    }
 
                     if (!string.IsNullOrWhiteSpace(targetFileName))
                     {
@@ -1113,6 +1124,7 @@ namespace Segra.Backend.Media
                     if (await UpdateMetadataFile(metadataFilePath, c =>
                     {
                         c.Title = newTitle;
+                        c.RecordingStartedAt ??= recordingStartedAt;
                         c.FileName = newFileName;
                         c.FilePath = newFilePath;
                     }) == null)

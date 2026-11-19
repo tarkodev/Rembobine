@@ -374,6 +374,23 @@ export default function ClipSettingsSection({
 
       {settings.clipCodec === 'h265' && <HevcExtensionWarning className="mt-3" />}
 
+      <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg border border-base-400 mt-4">
+        <input
+          type="checkbox"
+          name="clipUseRecordingEndTime"
+          checked={settings.clipUseRecordingEndTime}
+          onChange={(e) => updateSettings({ clipUseRecordingEndTime: e.target.checked })}
+          className="checkbox checkbox-primary checkbox-sm"
+        />
+        <div>
+          <div className="font-semibold">Date Clips by the End of the Selected Footage</div>
+          <div className="text-sm opacity-70 mt-0.5">
+            Use the time the selection ended in the original recording for the clip’s library date
+            and automatic filename.
+          </div>
+        </div>
+      </label>
+
       {/* Keep Separate Audio Tracks */}
       {settings.enableSeparateAudioTracks && (
         <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg border border-base-400 mt-4">

@@ -25,6 +25,7 @@ export interface Content {
   fileSizeKb: number;
   duration: string;
   createdAt: string;
+  exportedAt?: string | null;
   uploadUrl?: string;
   igdbId?: number;
   gameExePath?: string;
@@ -448,6 +449,7 @@ export interface Settings {
   clipFps: ClipFPS;
   clipAudioQuality: ClipAudioQuality;
   clipPreset: ClipPreset;
+  clipUseRecordingEndTime: boolean;
   clipKeepSeparateAudioTracks: boolean;
   copyCompressSizesMb: number[]; // Hidden setting (no UI), sizes for "Copy as X MB"
   keybindings: Hotkey[];
@@ -573,6 +575,7 @@ export const initialSettings: Settings = {
   clipFps: 60,
   clipAudioQuality: '128k',
   clipPreset: 'veryfast',
+  clipUseRecordingEndTime: false,
   clipKeepSeparateAudioTracks: false,
   copyCompressSizesMb: [20, 50, 100, 500],
   soundEffectsVolume: 1,

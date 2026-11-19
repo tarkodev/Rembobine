@@ -90,6 +90,8 @@ namespace Segra.Backend.Media
                     GameExePath = content.GameExePath,
                     Title = content.Title,
                     CreatedAt = content.CreatedAt,
+                    RecordingStartedAt = content.RecordingStartedAt,
+                    ExportedAt = content.ExportedAt,
                     AudioTrackNames = content.AudioTrackNames,
                     AudioTrackTypes = content.AudioTrackTypes,
                     Compressed = content.Compressed,
@@ -884,6 +886,10 @@ namespace Segra.Backend.Media
         public string? GameExePath { get; init; }
         public string? Title { get; init; }
         public DateTime? CreatedAt { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? RecordingStartedAt { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTime? ExportedAt { get; init; }
         public List<string>? AudioTrackNames { get; init; }
         public List<string>? AudioTrackTypes { get; init; }
         public bool Compressed { get; init; }

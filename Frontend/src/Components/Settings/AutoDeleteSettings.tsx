@@ -24,7 +24,7 @@ const findExpired = (content: Content[], rule: Rule) => {
   return content.filter((c) => {
     if (c.isImported) return false;
     if (!rule.includeClips && c.type !== 'Session' && c.type !== 'Buffer') return false;
-    const created = Date.parse(c.createdAt);
+    const created = Date.parse(c.exportedAt ?? c.createdAt);
     return !isNaN(created) && created < cutoff;
   });
 };

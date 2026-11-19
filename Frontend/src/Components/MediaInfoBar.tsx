@@ -5,6 +5,7 @@ import LibraryGameIcon from './LibraryGameIcon';
 
 interface MediaInfoBarProps {
   createdAt: string;
+  recordedEnd?: boolean;
   fileSize: string;
   filePath: string;
   game?: string;
@@ -14,6 +15,7 @@ interface MediaInfoBarProps {
 
 export default function MediaInfoBar({
   createdAt,
+  recordedEnd,
   fileSize,
   filePath,
   game,
@@ -35,6 +37,7 @@ export default function MediaInfoBar({
     : created.toLocaleTimeString(isUS ? 'en-US' : undefined, {
         hour: '2-digit',
         minute: '2-digit',
+        second: recordedEnd ? '2-digit' : undefined,
         hour12: isUS,
       });
 
@@ -61,7 +64,7 @@ export default function MediaInfoBar({
           </>
         )}
         <span className="whitespace-nowrap">
-          Created: {createdDateStr}
+          {recordedEnd ? 'Selection ended' : 'Created'}: {createdDateStr}
           {createdTimeStr ? ` ${createdTimeStr}` : ''}
         </span>
         <span aria-hidden="true">•</span>
