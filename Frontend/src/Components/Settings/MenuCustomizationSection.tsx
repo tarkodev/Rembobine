@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   DEFAULT_MENU_ITEMS,
+  getMenuItemLabel,
   MenuItemId,
   MenuItemPreference,
   menuItemHasContent,
@@ -138,7 +139,7 @@ const MenuRow: React.FC<RowProps> = ({
           <GripVertical className="w-4 h-4" />
         </button>
         <Icon className="w-5 h-5 text-base-content/80 shrink-0" />
-        <span className="font-medium truncate">{item.id}</span>
+        <span className="font-medium truncate">{getMenuItemLabel(item.id)}</span>
       </div>
 
       <div className="flex items-center gap-2">

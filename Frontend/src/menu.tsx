@@ -32,7 +32,12 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import Button from './Components/Button';
-import { MenuItemId, DEFAULT_MENU_ITEMS, menuItemHasContent } from './Models/types';
+import {
+  MenuItemId,
+  DEFAULT_MENU_ITEMS,
+  getMenuItemLabel,
+  menuItemHasContent,
+} from './Models/types';
 
 interface MenuProps {
   selectedMenu: string;
@@ -227,7 +232,7 @@ export default function Menu({ selectedMenu, onSelectMenu }: MenuProps) {
                   onMouseDown={() => onSelectMenu(id)}
                 >
                   <Icon className="w-5 h-5" />
-                  {id}
+                  {getMenuItemLabel(id)}
                 </Button>
               );
 

@@ -347,6 +347,9 @@ export type ClipQualityPreset = 'low' | 'standard' | 'high' | 'custom';
 export type MenuItemId =
   'Full Sessions' | 'Replay Buffer' | 'Clips' | 'Highlights' | 'Screenshots' | 'Settings';
 
+export const getMenuItemLabel = (id: MenuItemId): string =>
+  id === 'Replay Buffer' ? 'Replay Buffers' : id;
+
 export interface MenuItemPreference {
   id: MenuItemId;
   visible: boolean;

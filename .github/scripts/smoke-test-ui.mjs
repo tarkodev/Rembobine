@@ -147,7 +147,7 @@ try {
 
   // Menu label -> the page's h1
   const pages = [
-    ['Replay Buffer', 'Replay Buffer'],
+    ['Replay Buffers', 'Replay Buffers'],
     ['Clips', 'Clips'],
     ['Highlights', 'Highlights'],
     ['Settings', 'Settings'],

@@ -24,6 +24,7 @@ focused on gameplay screenshots and more control over recording and playback.
 - [x] Add image import, game filters, sorting, and a dedicated screenshot viewer with navigation, zoom, and fullscreen.
 - [x] Add **Show Import in Clips and Highlights** under **Settings → Preferences → Interface**. It is off by default.
   When enabled, the **Import** button on each page adds MP4 files to that library.
+- [x] Rename the replay library to **Replay Buffers** in the sidebar, page heading, and menu customization.
 - [x] Add **Replay Saved** and **Screenshot Saved** bookmarks to the current **Full Session** after each successful
   save. The bookmark menu opens the media, and **Back** returns to the same playback position in the session.
 - [x] Add **Open Full Session** next to **Copy** in the replay player and screenshot viewer. It opens the session
