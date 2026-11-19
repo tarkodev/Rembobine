@@ -81,9 +81,9 @@ export default function OpenFullSessionButton({
     const playback = player ? { time: player.currentTime, paused: player.paused } : undefined;
     const openInSession = (session: Content, sourceTime: number) => {
       const startTime =
-        bookmarkType === BookmarkType.ClipSaved
-          ? sourceTime
-          : getBookmarkPlaybackStart(sourceTime, bookmarkType, session, settings);
+        bookmarkType === BookmarkType.ReplaySaved
+          ? getBookmarkPlaybackStart(sourceTime, bookmarkType, session, settings)
+          : sourceTime;
       openLinkedMedia({ type: 'video', video: session, previewUrl }, playback, startTime);
     };
     if (link) {
