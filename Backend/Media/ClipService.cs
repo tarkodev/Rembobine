@@ -1278,6 +1278,7 @@ namespace Segra.Backend.Media
             string directory = Path.GetDirectoryName(filePath) ?? string.Empty;
             string fileName = Path.GetFileNameWithoutExtension(filePath);
             string extension = Path.GetExtension(filePath);
+            int lastDeniedSuffix = -2;
 
             for (int i = 0; ; i++)
             {
@@ -1292,6 +1293,12 @@ namespace Segra.Backend.Media
                 catch (IOException ex) when ((ex.HResult & 0xffff) is 17 or 80 or 183)
                 {
                     continue;
+                }
+                // Windows can report access denied while a cancelled reservation is being unlinked.
+                // Try the next name once, but propagate an actual directory permission error.
+                catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows() && lastDeniedSuffix != i - 1)
+                {
+                    lastDeniedSuffix = i;
                 }
             }
         }
