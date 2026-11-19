@@ -92,13 +92,17 @@ namespace Segra.Backend.Games
                     _manuallyStoppedGames.TryRemove(stopped);
             foreach (int pid in _runningGames.Keys.Where(pid => !livePids.Contains(pid)).ToArray())
                 _runningGames.Remove(pid);
-            AppState.Instance.RunningGame = _runningGames.Values.LastOrDefault();
+            // Check the current policy so changing Never takes effect while the process is open.
+            AppState.Instance.RunningGame = _runningGames.Values.LastOrDefault(CanDisplayGame);
         }
+
+        private static bool CanDisplayGame(RunningGame game) =>
+            GameSettingsService.FindForExePath(game.ExePath)?.Record != false;
 
         public static void StartRunningGame(int pid)
         {
             var game = AppState.Instance.RunningGame;
-            if (game?.Pid != pid || !IsProcessRunning(pid) || ResolveProcessPath(pid) != game.ExePath) return;
+            if (game?.Pid != pid || !CanDisplayGame(game) || !IsProcessRunning(pid) || ResolveProcessPath(pid) != game.ExePath) return;
             StartGameRecording(pid, game.ExePath, userInitiated: true);
         }
 
