@@ -117,6 +117,24 @@ namespace Segra.Backend.Media
 
         public static string NewContentId() => Guid.NewGuid().ToString("N");
 
+        internal static void ApplyClipRecordingFileTimes(Content content, string filePath)
+        {
+            if (content.Type != Content.ContentType.Clip || !content.ExportedAt.HasValue || content.CreatedAt == default)
+                return;
+
+            try
+            {
+                DateTime recordedEndUtc = content.CreatedAt.ToUniversalTime();
+                File.SetLastWriteTimeUtc(filePath, recordedEndUtc);
+                if (OperatingSystem.IsWindows())
+                    File.SetCreationTimeUtc(filePath, recordedEndUtc);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not set the recording time on clip file {Path}", filePath);
+            }
+        }
+
         // The startup content load and the migrations backfill the same legacy files concurrently.
         // Serializing the check-then-write prevents two ids from ever being claimed for one video.
         private static readonly object _ensureContentIdLock = new();

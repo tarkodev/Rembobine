@@ -5,7 +5,6 @@ interface LibraryMediaMetadataProps {
   gameIcon?: string | null;
   fileSize?: string;
   createdAt: string;
-  showSeconds?: boolean;
 }
 
 export default function LibraryMediaMetadata({
@@ -13,7 +12,6 @@ export default function LibraryMediaMetadata({
   gameIcon,
   fileSize,
   createdAt,
-  showSeconds,
 }: LibraryMediaMetadataProps) {
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -30,10 +28,7 @@ export default function LibraryMediaMetadata({
         </>
       )}
       <time dateTime={createdAt}>
-        {new Date(createdAt).toLocaleString(undefined, {
-          dateStyle: 'short',
-          timeStyle: showSeconds ? 'medium' : 'short',
-        })}
+        {new Date(createdAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
       </time>
     </span>
   );

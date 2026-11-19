@@ -81,6 +81,7 @@ namespace Segra.Backend.Media
 
             using var work = BackgroundWork.Begin();
             await _writeLock.WaitAsync();
+            string filePath = content.FilePath;
             try
             {
                 var metadata = new EmbeddedMetadata
@@ -99,14 +100,17 @@ namespace Segra.Backend.Media
                         .OrderBy(b => b.Time).ToList(),
                     Matches = content.Matches is { Count: > 0 } ? content.Matches : null,
                 };
-                await Task.Run(() => Embed(content.FilePath, metadata, indexFirst));
+                await Task.Run(() => Embed(filePath, metadata, indexFirst));
             }
             catch (Exception ex)
             {
-                Log.Warning($"Could not embed metadata in {content.FilePath}: {ex.Message}");
+                Log.Warning($"Could not embed metadata in {filePath}: {ex.Message}");
             }
             finally
             {
+                // Embedding can write in place or replace the MP4. Stamp the final file after all
+                // writable streams have closed, including when a later title or bookmark edit runs.
+                ContentService.ApplyClipRecordingFileTimes(content, filePath);
                 _writeLock.Release();
             }
         }

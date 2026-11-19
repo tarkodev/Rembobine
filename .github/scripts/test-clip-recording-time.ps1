@@ -45,6 +45,13 @@ function Invoke-Export($segments, $mode = 'combined') {
     return $clips
 }
 
+function Assert-FileDates($clip, [datetime]$expected) {
+    $file = Get-Item -LiteralPath $clip.FilePath
+    if ($file.CreationTimeUtc -ne $expected.ToUniversalTime() -or $file.LastWriteTimeUtc -ne $expected.ToUniversalTime()) {
+        throw "Unexpected filesystem dates on $($file.Name): created $($file.CreationTimeUtc.ToString('o')), modified $($file.LastWriteTimeUtc.ToString('o')), expected $($expected.ToUniversalTime().ToString('o'))"
+    }
+}
+
 function Assert-DatedClip($clip, [datetime]$expected, $suffix = '') {
     $fileName = $expected.ToString('yyyy-MM-dd_HH-mm-ss') + $suffix + '.mp4'
     if ($clip.CreatedAt -ne $expected -or $clip.ExportedAt -lt $testStart -or
@@ -55,6 +62,7 @@ function Assert-DatedClip($clip, [datetime]$expected, $suffix = '') {
     if ($embedded.CreatedAt -ne $expected -or $embedded.ExportedAt -ne $clip.ExportedAt) {
         throw "MP4 metadata did not preserve both dates in $fileName"
     }
+    Assert-FileDates $clip $expected
 }
 
 try {
@@ -83,13 +91,22 @@ try {
     if ($settings.ClipUseRecordingEndTime) { throw 'Source dating must default to off' }
     $defaultClip = Invoke-Export $session
     if ($defaultClip.CreatedAt -lt $testStart -or $null -ne $defaultClip.ExportedAt) { throw 'Unexpected default clip date' }
+    $file = Get-Item -LiteralPath $defaultClip.FilePath
+    if ($file.CreationTime -lt $testStart -or $file.LastWriteTime -lt $testStart) { throw 'Default clip has an old file date' }
 
     $settings.ClipUseRecordingEndTime = $true
     $separate = @(Invoke-Export @($session, $replay) 'separate')
     Assert-DatedClip ($separate | Where-Object FileName -like '*_segment-001') $sessionStart.AddSeconds(5) '_segment-001'
     Assert-DatedClip ($separate | Where-Object FileName -like '*_segment-002') $replayEnd.AddSeconds(-3) '_segment-002'
     # The edit ends on the earlier recording. Its last segment determines the date.
-    Assert-DatedClip (Invoke-Export @($session, $replay)) $replayEnd.AddSeconds(-3)
+    $combined = Invoke-Export @($session, $replay)
+    Assert-DatedClip $combined $replayEnd.AddSeconds(-3)
+    $combined.Title = 'Edited after exporting'
+    [void]$embeddedMetadata::EmbedAsync($combined).GetAwaiter().GetResult()
+    if ($embeddedMetadata::ReadAsync($combined.FilePath).GetAwaiter().GetResult().Title -ne $combined.Title) {
+        throw 'The test edit did not update the embedded title'
+    }
+    Assert-FileDates $combined $replayEnd.AddSeconds(-3)
     $unknown = Invoke-Export @{ id = 3; contentId = $importId; startTime = 1; endTime = 2 }
     if ($unknown.CreatedAt -lt $testStart -or $null -ne $unknown.ExportedAt) { throw 'Unknown source did not fall back to export time' }
     Write-Output 'Clip dates passed for default exports, separate and combined exports, midnight, a legacy replay and unknown capture time.'

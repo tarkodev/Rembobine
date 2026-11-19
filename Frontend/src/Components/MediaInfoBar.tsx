@@ -37,7 +37,6 @@ export default function MediaInfoBar({
     : created.toLocaleTimeString(isUS ? 'en-US' : undefined, {
         hour: '2-digit',
         minute: '2-digit',
-        second: recordedEnd ? '2-digit' : undefined,
         hour12: isUS,
       });
 

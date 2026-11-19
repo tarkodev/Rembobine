@@ -340,6 +340,7 @@ namespace Segra.Backend.Media
                         throw new IOException($"Copy size mismatch ({tempLen} != {sourceLen}) for {sourcePath}");
 
                     File.Move(tempPath, destPath);
+                    ContentService.ApplyClipRecordingFileTimes(content, destPath);
                 }
                 catch
                 {

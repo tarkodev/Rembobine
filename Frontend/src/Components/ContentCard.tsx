@@ -765,7 +765,6 @@ export default function ContentCard({
             gameIcon={gameIcon}
             fileSize={content!.fileSize}
             createdAt={content!.createdAt}
-            showSeconds={type === 'Clip' && !!content!.exportedAt}
           />
           {enableAccountAndSharing && uploadUrl && (
             <div className="flex h-5 shrink-0 items-center">

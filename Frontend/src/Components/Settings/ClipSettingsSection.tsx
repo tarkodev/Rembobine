@@ -385,8 +385,8 @@ export default function ClipSettingsSection({
         <div>
           <div className="font-semibold">Date Clips by the End of the Selected Footage</div>
           <div className="text-sm opacity-70 mt-0.5">
-            Use the time the selection ended in the original recording for the clip’s library date
-            and automatic filename.
+            Use the time the selection ended in the original recording for the clip’s file dates,
+            library date and automatic filename.
           </div>
         </div>
       </label>
