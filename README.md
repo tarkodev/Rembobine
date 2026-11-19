@@ -5,6 +5,8 @@ focused on gameplay screenshots and more control over recording and playback.
 
 ## Roadmap
 
+- [ ] Add a **Trash** view for manually deleted videos and screenshots. Restore an item to its original
+  library with its title and bookmarks, including links from source sessions. Empty the trash to free disk space.
 - [x] Add **📷 Screenshots** below **Highlights** and a configurable **Take Screenshot** hotkey. It saves a PNG
   from the active game recording or replay buffer. Assign a key under **Settings → Hotkeys**.
 - [x] Add **Save Frame as Screenshot** to the paused video player. Both capture methods save to the same gallery
