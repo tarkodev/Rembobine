@@ -762,11 +762,14 @@ export default function ContentCard({
         <div className="text-sm text-gray-200 flex items-center justify-between w-full">
           <span className="inline-flex items-center gap-1.5">
             {content!.game && content!.game !== 'Unknown' && (
-              <LibraryGameIcon src={gameIcon} name={content!.game} />
+              <>
+                <LibraryGameIcon src={gameIcon} name={content!.game} />
+                <span aria-hidden="true">•</span>
+              </>
             )}
-            <span>
-              {content!.fileSize} &bull; {new Date(content!.createdAt).toLocaleDateString()}
-            </span>
+            <span>{content!.fileSize}</span>
+            <span aria-hidden="true">•</span>
+            <span>{new Date(content!.createdAt).toLocaleDateString()}</span>
           </span>
           {enableAccountAndSharing && uploadUrl && (
             <div className="flex absolute right-3 gap-0 pr-[0.3875rem]">

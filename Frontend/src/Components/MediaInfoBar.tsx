@@ -38,6 +38,8 @@ export default function MediaInfoBar({
         hour12: isUS,
       });
 
+  const hasGame = !!game && game !== 'Unknown';
+
   return (
     <div className="flex items-center gap-2 px-2 py-1 mb-2 text-xs leading-tight text-gray-300 border rounded-lg shrink-0 bg-base-300 border-base-400">
       <Button
@@ -50,17 +52,25 @@ export default function MediaInfoBar({
         <ArrowLeft className="w-4 h-4" />
       </Button>
       <div className="flex items-center gap-2 overflow-hidden">
+        {hasGame && (
+          <>
+            <LibraryGameIcon src={gameIcon} name={game} />
+            <span aria-hidden="true">•</span>
+            <span className="whitespace-nowrap">{fileSize}</span>
+            <span aria-hidden="true">•</span>
+          </>
+        )}
         <span className="whitespace-nowrap">
           Created: {createdDateStr}
           {createdTimeStr ? ` ${createdTimeStr}` : ''}
         </span>
-        <span>•</span>
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-          Size:
-          {game && game !== 'Unknown' && <LibraryGameIcon src={gameIcon} name={game} />}
-          {fileSize}
-        </span>
-        <span>•</span>
+        <span aria-hidden="true">•</span>
+        {!hasGame && (
+          <>
+            <span className="whitespace-nowrap">Size: {fileSize}</span>
+            <span aria-hidden="true">•</span>
+          </>
+        )}
         <span className="flex items-center gap-1 min-w-0">
           <span className="whitespace-nowrap">Location:</span>
           <button
