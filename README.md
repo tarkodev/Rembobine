@@ -35,7 +35,6 @@ focused on gameplay screenshots and more control over recording and playback.
   as **not counted**.
 
   > Replay Buffers are kept when freeing up space. When on, their size is excluded from the limit.
-- [ ] Give saved **Replay Buffer** videos and **Full Sessions** separate disk quotas.
 
 Build Segrabi from source using the setup instructions in [CONTRIBUTING.md](CONTRIBUTING.md).
 
