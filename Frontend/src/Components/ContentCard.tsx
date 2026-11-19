@@ -769,10 +769,15 @@ export default function ContentCard({
             )}
             <span>{content!.fileSize}</span>
             <span aria-hidden="true">•</span>
-            <span>{new Date(content!.createdAt).toLocaleDateString()}</span>
+            <time dateTime={content!.createdAt}>
+              {new Date(content!.createdAt).toLocaleString(undefined, {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              })}
+            </time>
           </span>
           {enableAccountAndSharing && uploadUrl && (
-            <div className="flex absolute right-3 gap-0 pr-[0.3875rem]">
+            <div className="flex h-5 shrink-0 items-center">
               <span
                 className="btn btn-ghost btn-sm btn-circle size-8.5 relative group hover:bg-white/10 active:bg-white/10"
                 onClick={(e) => {
