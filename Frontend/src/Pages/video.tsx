@@ -4,6 +4,7 @@ import { sendMessageToBackend } from '../Utils/MessageUtils';
 import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
 import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName } from '../Utils/FileUtils';
+import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import type { LinkedMedia } from '../Context/SelectedVideoContext';
@@ -2049,8 +2050,9 @@ export default function VideoComponent({ video }: { video: Content }) {
       }
     }
     for (const screenshot of appState.screenshots) {
-      if (!screenshot.isImported) {
-        media.set(`${BookmarkType.ScreenshotSaved}:${screenshot.fileName}`, {
+      const mediaId = getScreenshotMediaId(screenshot);
+      if (mediaId) {
+        media.set(`${BookmarkType.ScreenshotSaved}:${mediaId}`, {
           type: 'screenshot',
           screenshot,
         });

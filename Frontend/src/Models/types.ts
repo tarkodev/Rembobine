@@ -85,6 +85,7 @@ export interface ContentFolderUsage {
 }
 
 export interface Screenshot {
+  mediaId?: string | null; // Older cached screenshots predate this field.
   fileName: string;
   filePath: string;
   createdAt: string;

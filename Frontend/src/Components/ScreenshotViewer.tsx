@@ -7,6 +7,7 @@ import { useModal } from '../Context/ModalContext';
 import { MAX_SCREENSHOT_ZOOM, useScreenshotViewport } from '../Hooks/useScreenshotViewport';
 import { BookmarkType, type Screenshot } from '../Models/types';
 import { getContentFileUrl } from '../Utils/FileUtils';
+import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import OpenFullSessionButton from './OpenFullSessionButton';
 import MediaInfoBar from './MediaInfoBar';
@@ -224,7 +225,7 @@ export default function ScreenshotViewer({
             )}
             <OpenFullSessionButton
               bookmarkType={BookmarkType.ScreenshotSaved}
-              mediaId={screenshot.isImported ? undefined : screenshot.fileName}
+              mediaId={getScreenshotMediaId(screenshot)}
             />
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">

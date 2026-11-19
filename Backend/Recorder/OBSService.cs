@@ -270,8 +270,8 @@ namespace Segra.Backend.Recorder
                     _recorderLock.Release();
                 }
 
-                string fileName = await ScreenshotService.SaveOutputFrameAsync(frame, recording.Game);
-                bookmark?.Complete(fileName);
+                string mediaId = await ScreenshotService.SaveOutputFrameAsync(frame, recording.Game);
+                bookmark?.Complete(mediaId);
             }
             catch (Exception ex)
             {
