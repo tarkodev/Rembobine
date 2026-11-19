@@ -7,6 +7,12 @@ focused on gameplay screenshots and more control over recording and playback.
 
 - [ ] Add a **Trash** view for manually deleted videos and screenshots. Restore an item to its original
   library with its title and bookmarks, including links from source sessions. Empty the trash to free disk space.
+- [ ] Track videos and screenshots renamed or moved within the library in File Explorer. Preserve custom titles,
+  bookmarks, and links to and from Full Sessions.
+- [ ] Automatically update the library when videos or screenshots are added or deleted in File Explorer,
+  including when several files change at once.
+- [ ] Refresh thumbnails when a video or screenshot is edited in place by another app. Update the displayed
+  duration when a video is trimmed.
 - [x] Add **📷 Screenshots** below **Highlights** and a configurable **Take Screenshot** hotkey. It saves a PNG
   from the active game recording or replay buffer. Assign a key under **Settings → Hotkeys**.
 - [x] Add **Save Frame as Screenshot** to the paused video player. Both capture methods save to the same gallery
