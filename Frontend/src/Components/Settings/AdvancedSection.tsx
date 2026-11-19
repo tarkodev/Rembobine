@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { FileText, RefreshCw, Plane, BookOpen } from 'lucide-react';
+import { FileText, RefreshCw, BookOpen } from 'lucide-react';
 import { GithubIcon, DiscordIcon } from '../icons/BrandIcons';
 import DropdownSelect from '../DropdownSelect';
 import { Settings as SettingsType } from '../../Models/types';
@@ -17,6 +15,20 @@ interface AdvancedSectionProps {
   canSelfUpdate: boolean;
 }
 
+const onlineFeatures = [
+  {
+    key: 'loadGameArtwork',
+    label: 'Load game artwork',
+    description: 'Download game icons and covers from segra.tv.',
+  },
+  {
+    key: 'enableAccountAndSharing',
+    label: 'Enable account and sharing',
+    description:
+      'Sign in to upload and share clips and highlights. Turning this off signs you out.',
+  },
+] as const;
+
 export default function AdvancedSection({
   settings,
   updateSettings,
@@ -25,25 +37,6 @@ export default function AdvancedSection({
   canSelfUpdate,
 }: AdvancedSectionProps) {
   const appState = useAppState();
-  const rowRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLSpanElement>(null);
-  const [flyDistance, setFlyDistance] = useState(240);
-
-  // Fly the plane from its spot to the right edge of the Airplane Mode row.
-  useEffect(() => {
-    const row = rowRef.current;
-    if (!row) return;
-    const measure = () => {
-      const content = contentRef.current;
-      if (!content) return;
-      const distance = row.getBoundingClientRect().right - content.getBoundingClientRect().right;
-      if (distance > 0) setFlyDistance(distance);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, []);
 
   return (
     <>
@@ -125,45 +118,25 @@ export default function AdvancedSection({
 
       <div className="p-4 bg-base-300 rounded-lg shadow-md border border-base-400">
         <h2 className="text-xl font-semibold mb-4">Online Features</h2>
-        <div ref={rowRef}>
-          <label className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg border border-base-400 overflow-hidden">
-            <input
-              type="checkbox"
-              name="airplaneMode"
-              checked={settings.airplaneMode}
-              onChange={(e) => updateSettings({ airplaneMode: e.target.checked })}
-              className="checkbox checkbox-primary checkbox-sm"
-            />
-            <div>
-              <span ref={contentRef} className="inline-flex items-center gap-1.5 font-semibold">
-                Airplane Mode
-                <AnimatePresence initial={false}>
-                  {settings.airplaneMode && (
-                    <motion.span
-                      className="inline-flex"
-                      initial={{ opacity: 0, x: -8, rotate: 45 }}
-                      animate={{ opacity: 1, x: 0, rotate: 45 }}
-                      exit={{
-                        opacity: 0,
-                        x: flyDistance,
-                        rotate: 45,
-                        transition: {
-                          x: { duration: 1.9, ease: [0.2, 0, 0.8, 0] },
-                          opacity: { duration: 0.9, ease: 'easeIn', delay: 1.0 },
-                        },
-                      }}
-                      transition={{ duration: 0.35, ease: 'easeOut' }}
-                    >
-                      <Plane size={16} />
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </span>
-              <div className="text-sm opacity-70 mt-0.5">
-                Signs you out and hides uploading and sharing.
+        <div className="space-y-2">
+          {onlineFeatures.map(({ key, label, description }) => (
+            <label
+              key={key}
+              className="flex items-center gap-3 cursor-pointer p-3 bg-base-200 rounded-lg border border-base-400"
+            >
+              <input
+                type="checkbox"
+                name={key}
+                checked={settings[key]}
+                onChange={(e) => updateSettings({ [key]: e.target.checked })}
+                className="checkbox checkbox-primary checkbox-sm"
+              />
+              <div>
+                <span className="font-semibold">{label}</span>
+                <div className="text-sm opacity-70 mt-0.5">{description}</div>
               </div>
-            </div>
-          </label>
+            </label>
+          ))}
         </div>
       </div>
 

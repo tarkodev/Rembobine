@@ -25,6 +25,7 @@ namespace Segra.Backend.Auth
 
         public static void Begin()
         {
+            if (!Core.Models.Settings.Instance.EnableAccountAndSharing) return;
             string state = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
             lock (_lock)

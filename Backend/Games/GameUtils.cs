@@ -370,7 +370,7 @@ namespace Segra.Backend.Games
 
         private static void AddUserAgent(HttpClient httpClient)
         {
-            if (Settings.Instance.AirplaneMode)
+            if (!Settings.Instance.EnableAccountAndSharing)
             {
                 httpClient.DefaultRequestHeaders.UserAgent.TryParseAdd("Segra");
                 return;

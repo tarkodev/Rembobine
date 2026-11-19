@@ -67,7 +67,7 @@ export default function ContentPage({
     () => state.content.filter((video) => video.type === contentType),
     [state.content, contentType],
   );
-  const { games: gameSettings, airplaneMode, showImportInClipsAndHighlights } = useSettings();
+  const { games: gameSettings, loadGameArtwork, showImportInClipsAndHighlights } = useSettings();
   const showImport =
     sectionId === 'sessions' ||
     sectionId === 'replayBuffer' ||
@@ -102,7 +102,7 @@ export default function ContentPage({
         options.set(item.game, {
           key: item.game,
           name: item.game,
-          icon: getContentGameIcon(item, state.gameList, gameSettings, airplaneMode),
+          icon: getContentGameIcon(item, state.gameList, gameSettings, loadGameArtwork),
           count: 1,
         });
     }
@@ -114,7 +114,7 @@ export default function ContentPage({
     if (importedCount > 0)
       sorted.push({ key: IMPORTED, name: 'Imported', icon: null, count: importedCount });
     return { gameOptions: sorted, gamesByName: options };
-  }, [contentItems, state.gameList, gameSettings, airplaneMode]);
+  }, [contentItems, state.gameList, gameSettings, loadGameArtwork]);
 
   useEffect(() => {
     if (selectedGame !== ALL_GAMES && !gameOptions.some((g) => g.key === selectedGame)) {

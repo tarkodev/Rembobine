@@ -176,7 +176,7 @@ export default function CustomGameModal({ onSave, onClose, initialName }: Custom
   const previewIcon = selectedExes.find((e) => e.icon)?.icon;
   const previewCustomIcon = selectedExes.find((e) => e.customIcon)?.customIcon;
   const previewSrc =
-    previewIcon && !settings.airplaneMode
+    previewIcon && settings.loadGameArtwork
       ? `https://segra.tv/api/games/icon/${previewIcon}`
       : previewCustomIcon
         ? `data:image/png;base64,${previewCustomIcon}`

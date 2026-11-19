@@ -426,7 +426,8 @@ export interface Settings {
   startupWindowMode: StartupWindowMode; // Window state when launched from startup
   closeButtonAction: CloseButtonAction;
   receiveBetaUpdates: boolean;
-  airplaneMode: boolean; // Hides cloud account/login/upload features and signs the user out
+  loadGameArtwork: boolean;
+  enableAccountAndSharing: boolean;
   recordingMode: RecordingMode;
   replayBufferDuration: number; // in seconds
   replayBufferMaxSize: number; // in MB
@@ -550,7 +551,8 @@ export const initialSettings: Settings = {
   startupWindowMode: 'Minimized',
   closeButtonAction: 'Minimize',
   receiveBetaUpdates: false,
-  airplaneMode: false,
+  loadGameArtwork: true,
+  enableAccountAndSharing: true,
   recordingMode: 'Hybrid',
   replayBufferDuration: 30,
   replayBufferMaxSize: 1000,

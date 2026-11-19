@@ -4240,7 +4240,7 @@ namespace Segra.Backend.Recorder
                 {
                     // Fail fast instead of the default 100s timeout when unreachable.
                     client.Timeout = TimeSpan.FromSeconds(15);
-                    if (!Settings.Instance.AirplaneMode)
+                    if (Settings.Instance.EnableAccountAndSharing)
                     {
                         client.DefaultRequestHeaders.UserAgent.TryParseAdd($"Segra/{UpdateService.GetCurrentVersion()}");
                         client.DefaultRequestHeaders.UserAgent.TryParseAdd($"(Windows {Environment.OSVersion.Version.ToString(3)})");

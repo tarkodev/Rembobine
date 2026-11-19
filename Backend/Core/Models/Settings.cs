@@ -78,7 +78,6 @@ namespace Segra.Backend.Core.Models
         // Linux has no tray, so closing to it left the app running with no visible way to quit
         private CloseButtonAction _closeButtonAction = OperatingSystem.IsWindows() ? CloseButtonAction.Minimize : CloseButtonAction.Exit;
         private bool _receiveBetaUpdates = false;
-        private bool _airplaneMode = false;
         private RecordingMode _recordingMode = RecordingMode.Hybrid;
         private int _replayBufferDuration = 30;
         private int _replayBufferMaxSize = 1000;
@@ -569,18 +568,11 @@ namespace Segra.Backend.Core.Models
             }
         }
 
-        [JsonPropertyName("airplaneMode")]
-        public bool AirplaneMode
-        {
-            get => _airplaneMode;
-            set
-            {
-                if (_airplaneMode != value)
-                {
-                    _airplaneMode = value;
-                }
-            }
-        }
+        [JsonPropertyName("loadGameArtwork")]
+        public bool LoadGameArtwork { get; set; } = true;
+
+        [JsonPropertyName("enableAccountAndSharing")]
+        public bool EnableAccountAndSharing { get; set; } = true;
 
         [JsonPropertyName("recordingMode")]
         public RecordingMode RecordingMode

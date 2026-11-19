@@ -47,11 +47,12 @@ export default function Settings() {
   const { openReleaseNotesModal, checkForUpdates, canSelfUpdate } = useUpdate();
   const settings = useSettings();
   const updateSettings = useSettingsUpdater();
-  // Airplane mode removes the Account section entirely (no login/cloud UI).
   const navItems = useMemo(
     () =>
-      settings.airplaneMode ? ALL_NAV_ITEMS.filter((item) => item.id !== 'account') : ALL_NAV_ITEMS,
-    [settings.airplaneMode],
+      settings.enableAccountAndSharing
+        ? ALL_NAV_ITEMS
+        : ALL_NAV_ITEMS.filter((item) => item.id !== 'account'),
+    [settings.enableAccountAndSharing],
   );
   const [activeSection, setActiveSection] = useState<SectionId>(navItems[0].id);
   const { scrollPositions, setScrollPosition } = useScroll();
@@ -159,7 +160,7 @@ export default function Settings() {
         <PendingRecordingSettingsBanner />
 
         {/* ACCOUNT */}
-        {!settings.airplaneMode && (
+        {settings.enableAccountAndSharing && (
           <>
             <SectionHeader id="account">Account</SectionHeader>
             <AccountSection />

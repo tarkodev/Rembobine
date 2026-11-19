@@ -2,6 +2,7 @@ using Serilog;
 using System.Text.Json;
 using Segra.Backend.App;
 using Segra.Backend.Media;
+using Segra.Backend.Auth;
 using Segra.Backend.Shared;
 using Segra.Backend.Recorder;
 using Segra.Backend.Core.Models;
@@ -146,6 +147,17 @@ namespace Segra.Backend.Core
             }
         }
 
+        private static void MigrateAirplaneMode(JsonElement root, Settings settings)
+        {
+            if (!root.TryGetProperty("airplaneMode", out var legacy) ||
+                legacy.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                return;
+
+            bool enabled = !legacy.GetBoolean();
+            if (!root.TryGetProperty("loadGameArtwork", out _)) settings.LoadGameArtwork = enabled;
+            if (!root.TryGetProperty("enableAccountAndSharing", out _)) settings.EnableAccountAndSharing = enabled;
+        }
+
         private static bool TryLoadSettingsFile(string path)
         {
             try
@@ -168,6 +180,7 @@ namespace Segra.Backend.Core
                 using (JsonDocument document = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }))
                 {
                     JsonElement root = document.RootElement;
+                    MigrateAirplaneMode(root, Settings.Instance);
 
                     foreach (JsonProperty property in root.EnumerateObject())
                     {
@@ -243,6 +256,7 @@ namespace Segra.Backend.Core
                     }
                 }
 
+                if (!Settings.Instance.EnableAccountAndSharing) Settings.Instance.Auth = new();
                 Settings.Instance.RunOnStartup = PlatformServices.Startup.GetStartupStatus();
 
                 Log.Information("Settings loaded from {0}", path);
@@ -274,6 +288,7 @@ namespace Segra.Backend.Core
 
                 if (updatedSettings != null)
                 {
+                    MigrateAirplaneMode(settingsElement, updatedSettings);
                     await UpdateSettingsInstance(updatedSettings);
                 }
             }
@@ -1043,10 +1058,22 @@ namespace Segra.Backend.Core
                 hasChanges = true;
             }
 
-            if (settings.AirplaneMode != updatedSettings.AirplaneMode)
+            if (settings.LoadGameArtwork != updatedSettings.LoadGameArtwork)
             {
-                Log.Information($"AirplaneMode changed from '{settings.AirplaneMode}' to '{updatedSettings.AirplaneMode}'");
-                settings.AirplaneMode = updatedSettings.AirplaneMode;
+                Log.Information($"LoadGameArtwork changed from '{settings.LoadGameArtwork}' to '{updatedSettings.LoadGameArtwork}'");
+                settings.LoadGameArtwork = updatedSettings.LoadGameArtwork;
+                hasChanges = true;
+            }
+
+            if (settings.EnableAccountAndSharing != updatedSettings.EnableAccountAndSharing)
+            {
+                Log.Information($"EnableAccountAndSharing changed from '{settings.EnableAccountAndSharing}' to '{updatedSettings.EnableAccountAndSharing}'");
+                settings.EnableAccountAndSharing = updatedSettings.EnableAccountAndSharing;
+                if (!settings.EnableAccountAndSharing)
+                {
+                    DiscordLoginService.Cancel();
+                    settings.Auth = new();
+                }
                 hasChanges = true;
             }
 

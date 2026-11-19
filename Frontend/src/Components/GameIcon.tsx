@@ -15,16 +15,16 @@ export default function GameIcon({
   name: string;
   size?: number;
 }) {
-  const [errored, setErrored] = useState(false);
-  const { airplaneMode } = useSettings();
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const { loadGameArtwork } = useSettings();
   // Prefer the catalog CDN icon; fall back to the exe-extracted base64 icon for custom games.
   const src =
-    iconId && !airplaneMode
+    iconId && loadGameArtwork
       ? `https://segra.tv/api/games/icon/${iconId}`
       : customIcon
         ? `data:image/png;base64,${customIcon}`
         : null;
-  const showImage = !!src && !errored;
+  const showImage = !!src && src !== failedSrc;
   return (
     <div
       className="rounded-md bg-base-200 flex items-center justify-center overflow-hidden flex-shrink-0"
@@ -35,7 +35,7 @@ export default function GameIcon({
           src={src}
           alt={name}
           className="w-full h-full object-cover"
-          onError={() => setErrored(true)}
+          onError={() => setFailedSrc(src)}
         />
       ) : (
         <Gamepad2 size={Math.round(size * 0.5)} className="text-base-content opacity-50" />

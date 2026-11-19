@@ -168,8 +168,8 @@ export default function VideoComponent({ video }: { video: Content }) {
   const settings = useSettings();
   const appState = useAppState();
   const gameIcon = useMemo(
-    () => getContentGameIcon(video, appState.gameList, settings.games, settings.airplaneMode),
-    [video.game, video.igdbId, appState.gameList, settings.games, settings.airplaneMode],
+    () => getContentGameIcon(video, appState.gameList, settings.games, settings.loadGameArtwork),
+    [video.game, video.igdbId, appState.gameList, settings.games, settings.loadGameArtwork],
   );
   const updateSettings = useSettingsUpdater();
   const { uploads } = useUploads();
@@ -3053,22 +3053,23 @@ export default function VideoComponent({ video }: { video: Content }) {
                   </button>
                 )}
               </div>
-              {(video.type === 'Clip' || video.type === 'Highlight') && !settings.airplaneMode && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="h-10 hover:text-accent"
-                  onClick={handleUpload}
-                  disabled={Object.values(uploads).some(
-                    (upload) =>
-                      upload.fileName === video.fileName + '.mp4' &&
-                      (upload.status === 'uploading' || upload.status === 'processing'),
-                  )}
-                >
-                  <Upload className="w-5 h-5" />
-                  <span>Upload</span>
-                </Button>
-              )}
+              {(video.type === 'Clip' || video.type === 'Highlight') &&
+                settings.enableAccountAndSharing && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="h-10 hover:text-accent"
+                    onClick={handleUpload}
+                    disabled={Object.values(uploads).some(
+                      (upload) =>
+                        upload.fileName === video.fileName + '.mp4' &&
+                        (upload.status === 'uploading' || upload.status === 'processing'),
+                    )}
+                  >
+                    <Upload className="w-5 h-5" />
+                    <span>Upload</span>
+                  </Button>
+                )}
               {video.type === 'Highlight' && copyButtons}
               {showClipTools && (
                 <>

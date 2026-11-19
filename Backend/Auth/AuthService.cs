@@ -14,6 +14,7 @@ namespace Segra.Backend.Auth
 
         public static void Login(string jwt, string refreshToken)
         {
+            if (!Core.Models.Settings.Instance.EnableAccountAndSharing) return;
             if (string.IsNullOrEmpty(jwt) || string.IsNullOrEmpty(refreshToken))
             {
                 Log.Warning("Login attempt with empty JWT or refresh token");
@@ -52,7 +53,7 @@ namespace Segra.Backend.Auth
                         Encoding.UTF8, "application/json");
 
                     var response = await _httpClient.PostAsync($"{ApiBase}/auth/token/refresh", content);
-                    if (response.IsSuccessStatusCode)
+                    if (response.IsSuccessStatusCode && Core.Models.Settings.Instance.EnableAccountAndSharing && Auth.Jwt == jwt)
                     {
                         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                         Auth.Jwt = doc.RootElement.GetProperty("access_token").GetString() ?? string.Empty;

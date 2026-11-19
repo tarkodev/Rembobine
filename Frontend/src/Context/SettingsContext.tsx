@@ -36,9 +36,11 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     try {
       const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (!raw) return null;
-      const cached = JSON.parse(raw);
+      const { airplaneMode, ...cached } = JSON.parse(raw);
       return {
         ...initialSettings,
+        loadGameArtwork: airplaneMode !== true,
+        enableAccountAndSharing: airplaneMode !== true,
         ...cached,
         gameIntegrations: { ...initialSettings.gameIntegrations, ...cached.gameIntegrations },
       };

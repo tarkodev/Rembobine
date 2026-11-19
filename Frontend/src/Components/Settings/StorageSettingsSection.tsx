@@ -435,7 +435,7 @@ export default function StorageSettingsSection({
             <div className="flex items-center gap-1.5 mt-1.5">
               {MATCH_GAMES.map(({ igdbId, name }) => {
                 const icon = appState.gameList.find((g) => g.igdbId === igdbId)?.icon;
-                return icon && !settings.airplaneMode ? (
+                return icon && settings.loadGameArtwork ? (
                   <img
                     key={igdbId}
                     src={`https://segra.tv/api/games/icon/${icon}`}

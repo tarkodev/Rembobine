@@ -74,7 +74,7 @@ export default function ContentCard({
   isSelectionMode = false,
   isHighlighted = false,
 }: VideoCardProps) {
-  const { enableAi, showNewBadgeOnVideos, airplaneMode } = useSettings();
+  const { enableAi, showNewBadgeOnVideos, enableAccountAndSharing } = useSettings();
   const { cacheFolder, content: allContent } = useAppState();
   const patchContent = usePatchContent();
   const { openModal, closeModal } = useModal();
@@ -424,7 +424,7 @@ export default function ContentCard({
     const menuWidth = 208;
     const actionCount =
       3 +
-      (!airplaneMode && (type === 'Clip' || type === 'Highlight') ? 1 : 0) +
+      (enableAccountAndSharing && (type === 'Clip' || type === 'Highlight') ? 1 : 0) +
       (type === 'Clip' || type === 'Highlight' || type === 'Buffer' ? 1 : 0) +
       (type === 'Session' && enableAi ? 1 : 0) +
       ((type === 'Clip' || type === 'Highlight') && !content?.compressed ? 1 : 0);
@@ -446,7 +446,7 @@ export default function ContentCard({
 
   const renderMenuItems = (closeMenu: () => void) => (
     <>
-      {!airplaneMode && (type === 'Clip' || type === 'Highlight') && (
+      {enableAccountAndSharing && (type === 'Clip' || type === 'Highlight') && (
         <li>
           <Button
             variant="menuPrimary"
@@ -768,7 +768,7 @@ export default function ContentCard({
               {content!.fileSize} &bull; {new Date(content!.createdAt).toLocaleDateString()}
             </span>
           </span>
-          {!airplaneMode && uploadUrl && (
+          {enableAccountAndSharing && uploadUrl && (
             <div className="flex absolute right-3 gap-0 pr-[0.3875rem]">
               <span
                 className="btn btn-ghost btn-sm btn-circle size-8.5 relative group hover:bg-white/10 active:bg-white/10"

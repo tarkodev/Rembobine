@@ -29,7 +29,7 @@ function readPreference(key: string): unknown {
 
 export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps) {
   const { screenshots, gameList } = useAppState();
-  const { games: gameSettings, airplaneMode } = useSettings();
+  const { games: gameSettings, loadGameArtwork } = useSettings();
   const [selectedGame, setSelectedGame] = useState(() => {
     const saved = readPreference('filters');
     return typeof saved === 'string' ? saved : ALL_GAMES;
@@ -58,7 +58,7 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
       const setting = gameSettings.find((item) => item.name === game);
       const iconId = gameList.find((item) => item.name === game)?.icon || setting?.icon;
       const icon =
-        iconId && !airplaneMode
+        iconId && loadGameArtwork
           ? `https://segra.tv/api/games/icon/${iconId}`
           : setting?.customIcon
             ? `data:image/png;base64,${setting.customIcon}`
@@ -72,7 +72,7 @@ export default function Screenshots({ selectedPath, onSelect }: ScreenshotsProps
     if (importedCount > 0)
       options.push({ key: IMPORTED, name: 'Imported', icon: null, count: importedCount });
     return options;
-  }, [screenshots, gameList, gameSettings, airplaneMode]);
+  }, [screenshots, gameList, gameSettings, loadGameArtwork]);
 
   const gameFilter = gameOptions.some((game) => game.key === selectedGame)
     ? selectedGame

@@ -45,7 +45,7 @@ namespace Segra.Backend.Media
         // Runs once per session, the first time the user is logged in
         public static void CheckStaleUploads()
         {
-            if (Settings.Instance.AirplaneMode) return;
+            if (!Settings.Instance.EnableAccountAndSharing) return;
             if (Interlocked.Exchange(ref _staleUploadCheckStarted, 1) == 1) return;
             _ = Task.Run(ClearStaleUploadUrls);
         }
@@ -108,6 +108,7 @@ namespace Segra.Backend.Media
 
         public static async Task HandleUploadContent(JsonElement message)
         {
+            if (!Settings.Instance.EnableAccountAndSharing) return;
             using var work = BackgroundWork.Begin();
             // Same file can be uploaded more than once at a time, so each upload gets its own id
             string uploadId = Guid.NewGuid().ToString("N");

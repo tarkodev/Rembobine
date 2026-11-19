@@ -76,14 +76,14 @@ function App() {
   useEffect(() => {
     if (removedVideo || removedScreenshot) goBack();
   }, [removedVideo, selectedVideo?.id, removedScreenshot, linkedScreenshot?.filePath, goBack]);
-  const needsUsername = !settings.airplaneMode && session && profile?.username?.startsWith('user_');
+  const needsUsername =
+    settings.enableAccountAndSharing && session && profile?.username?.startsWith('user_');
 
-  // Airplane mode hides all cloud features and must not keep a signed-in session.
   useEffect(() => {
-    if (settings.airplaneMode && session) {
+    if (!settings.enableAccountAndSharing && session) {
       signOut();
     }
-  }, [settings.airplaneMode, session, signOut]);
+  }, [settings.enableAccountAndSharing, session, signOut]);
 
   // If the current menu becomes hidden (and has no content keeping it visible),
   // fall back to the default (or first reachable item).

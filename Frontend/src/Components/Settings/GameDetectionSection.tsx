@@ -270,7 +270,7 @@ export default function GameDetectionSection() {
   // For migrated games that don't carry an icon yet, look one up from the catalog by igdb id or name.
   const resolveIcon = (g: GameSetting): string | undefined => g.icon ?? findCatalogEntry(g)?.icon;
 
-  const showCovers = settings.showGameBackground && !settings.airplaneMode;
+  const showCovers = settings.showGameBackground && settings.loadGameArtwork;
   const resolveCover = (g: GameSetting): string | null => {
     const coverId = showCovers ? findCatalogEntry(g)?.coverImageId : undefined;
     return coverId ? `https://segra.tv/api/games/cover/${coverId}` : null;
