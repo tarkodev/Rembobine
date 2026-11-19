@@ -15,6 +15,7 @@ import { useImports } from '../Context/ImportContext';
 import Button from './Button';
 import MergeModal from './MergeModal';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
+import { getContentGameIcon } from '../Utils/GameIconUtils';
 
 // Imports that carried no Segra metadata have no game, so they are only listed under Imported
 const isUnknownImport = (item: Content) => item.isImported && item.game === 'Unknown';
@@ -91,34 +92,28 @@ export default function ContentPage({
     }
   });
 
-  const gameOptions = useMemo(() => {
-    const iconFor = (item: Content): string | null => {
-      const listed =
-        state.gameList.find((g) => item.igdbId != null && g.igdbId === item.igdbId) ??
-        state.gameList.find((g) => g.name === item.game);
-      const setting = gameSettings.find((g) => g.name === item.game);
-      const iconId = listed?.icon || setting?.icon;
-      if (iconId && !airplaneMode) return `https://segra.tv/api/games/icon/${iconId}`;
-      if (setting?.customIcon) return `data:image/png;base64,${setting.customIcon}`;
-      return null;
-    };
-
+  const { gameOptions, gamesByName } = useMemo(() => {
     const options = new Map<string, GameOption>();
     for (const item of contentItems) {
       if (isUnknownImport(item)) continue;
       const existing = options.get(item.game);
       if (existing) existing.count++;
       else
-        options.set(item.game, { key: item.game, name: item.game, icon: iconFor(item), count: 1 });
+        options.set(item.game, {
+          key: item.game,
+          name: item.game,
+          icon: getContentGameIcon(item, state.gameList, gameSettings, airplaneMode),
+          count: 1,
+        });
     }
     const sorted = [...options.values()].sort(
       (a, b) => b.count - a.count || a.name.localeCompare(b.name),
     );
 
     const importedCount = contentItems.filter((item) => item.isImported).length;
-    return importedCount > 0
-      ? [...sorted, { key: IMPORTED, name: 'Imported', icon: null, count: importedCount }]
-      : sorted;
+    if (importedCount > 0)
+      sorted.push({ key: IMPORTED, name: 'Imported', icon: null, count: importedCount });
+    return { gameOptions: sorted, gamesByName: options };
   }, [contentItems, state.gameList, gameSettings, airplaneMode]);
 
   useEffect(() => {
@@ -614,6 +609,7 @@ export default function ContentPage({
             <ContentCard
               key={video.id}
               content={video}
+              gameIcon={gamesByName.get(video.game)?.icon}
               onClick={(v, e) => handleCardClick(v, e)}
               type={contentType}
               isSelected={selectedItems.has(video.id)}

@@ -1,15 +1,25 @@
 import { ArrowLeft } from 'lucide-react';
 import { openFileLocation } from '../Utils/FileUtils';
 import Button from './Button';
+import LibraryGameIcon from './LibraryGameIcon';
 
 interface MediaInfoBarProps {
   createdAt: string;
   fileSize: string;
   filePath: string;
+  game?: string;
+  gameIcon?: string | null;
   onBack: () => void;
 }
 
-export default function MediaInfoBar({ createdAt, fileSize, filePath, onBack }: MediaInfoBarProps) {
+export default function MediaInfoBar({
+  createdAt,
+  fileSize,
+  filePath,
+  game,
+  gameIcon,
+  onBack,
+}: MediaInfoBarProps) {
   const created = new Date(createdAt);
   const isValidDate = !isNaN(created.getTime());
   const locale = Intl.DateTimeFormat().resolvedOptions().locale?.toLowerCase() || '';
@@ -45,7 +55,11 @@ export default function MediaInfoBar({ createdAt, fileSize, filePath, onBack }: 
           {createdTimeStr ? ` ${createdTimeStr}` : ''}
         </span>
         <span>•</span>
-        <span className="whitespace-nowrap">Size: {fileSize}</span>
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          Size:
+          {game && game !== 'Unknown' && <LibraryGameIcon src={gameIcon} name={game} />}
+          {fileSize}
+        </span>
         <span>•</span>
         <span className="flex items-center gap-1 min-w-0">
           <span className="whitespace-nowrap">Location:</span>

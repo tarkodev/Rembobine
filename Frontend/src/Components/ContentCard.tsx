@@ -25,6 +25,7 @@ import { useCompression } from '../Context/CompressionContext';
 import { useContentMigration } from '../Context/ContentMigrationContext';
 import Button from './Button';
 import MatchTooltip from './MatchTooltip';
+import LibraryGameIcon from './LibraryGameIcon';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import {
   getMatchRecord,
@@ -54,6 +55,7 @@ const offscreenObserver = new IntersectionObserver(
 
 interface VideoCardProps {
   content?: Content; // Optional for skeleton cards
+  gameIcon?: string | null;
   type: VideoType;
   onClick?: (video: Content, event: React.MouseEvent) => void; // Click handler for the entire card
   isLoading?: boolean; // Indicates if this is a loading (skeleton) card
@@ -64,6 +66,7 @@ interface VideoCardProps {
 
 export default function ContentCard({
   content,
+  gameIcon,
   type,
   onClick,
   isLoading,
@@ -757,8 +760,13 @@ export default function ContentCard({
           </div>
         </div>
         <div className="text-sm text-gray-200 flex items-center justify-between w-full">
-          <span>
-            {content!.fileSize} &bull; {new Date(content!.createdAt).toLocaleDateString()}
+          <span className="inline-flex items-center gap-1.5">
+            {content!.game && content!.game !== 'Unknown' && (
+              <LibraryGameIcon src={gameIcon} name={content!.game} />
+            )}
+            <span>
+              {content!.fileSize} &bull; {new Date(content!.createdAt).toLocaleDateString()}
+            </span>
           </span>
           {!airplaneMode && uploadUrl && (
             <div className="flex absolute right-3 gap-0 pr-[0.3875rem]">

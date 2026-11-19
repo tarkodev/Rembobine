@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ArrowUpDown, Clock, HardDrive, Timer, Gamepad2, FileUp, Monitor } from 'lucide-react';
 import GameFilterDropdown from './GameFilterDropdown';
+import LibraryGameIcon from './LibraryGameIcon';
 
 export type SortOption = 'newest' | 'oldest' | 'size' | 'duration' | 'game';
 
@@ -25,19 +26,6 @@ export interface ContentFiltersProps {
   selectedGame: string;
   sortOption: SortOption;
   showDurationSort?: boolean;
-}
-
-function GameIcon({ src }: { src: string | null }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) return <Gamepad2 size={18} className={ICON_CLASS} />;
-  return (
-    <img
-      src={src}
-      alt=""
-      className="w-5 h-5 rounded object-cover shrink-0"
-      onError={() => setFailed(true)}
-    />
-  );
 }
 
 function GameLabel({ icon, name, count }: { icon: React.ReactNode; name: string; count: number }) {
@@ -118,7 +106,7 @@ export default function ContentFilters({
             ) : g.key === 'Manual Recording' ? (
               <Monitor size={18} className={ICON_CLASS} />
             ) : (
-              <GameIcon src={g.icon} />
+              <LibraryGameIcon src={g.icon} />
             )
           }
           name={g.name}

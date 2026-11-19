@@ -56,6 +56,7 @@ import CopyFileButton from '../Components/CopyFileButton';
 import OpenFullSessionButton from '../Components/OpenFullSessionButton';
 import DeleteMediaButton from '../Components/DeleteMediaButton';
 import MediaInfoBar from '../Components/MediaInfoBar';
+import { getContentGameIcon } from '../Utils/GameIconUtils';
 import BookmarkMediaMenu from '../Components/BookmarkMediaMenu';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import HevcExtensionWarning from '../Components/HevcExtensionWarning';
@@ -166,6 +167,10 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Context hooks
   const settings = useSettings();
   const appState = useAppState();
+  const gameIcon = useMemo(
+    () => getContentGameIcon(video, appState.gameList, settings.games, settings.airplaneMode),
+    [video.game, video.igdbId, appState.gameList, settings.games, settings.airplaneMode],
+  );
   const updateSettings = useSettingsUpdater();
   const { uploads } = useUploads();
   const { openModal, closeModal, isModalOpen } = useModal();
@@ -2329,6 +2334,8 @@ export default function VideoComponent({ video }: { video: Content }) {
             createdAt={video.createdAt}
             fileSize={video.fileSize}
             filePath={video.filePath}
+            game={video.game}
+            gameIcon={gameIcon}
             onBack={goBack}
           />
           <div className="flex justify-center w-full mb-px aspect-video shrink min-h-0">
