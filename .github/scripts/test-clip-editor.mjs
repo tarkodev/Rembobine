@@ -66,47 +66,30 @@ try {
     filePath: "X:/clip.mp4",
     fileName: "clip",
   };
-  const session = {
-    ...base,
-    id: "session",
-    type: "Session",
-    bookmarks: [
-      {
-        id: 10,
-        type: "ClipSaved",
-        mediaId: "clip",
-        time: "00:00:05",
-        clipStart: "00:00:02",
-        clipOffset: 0,
-      },
-    ],
-  };
-  await page.addInitScript(
-    ({ session, clip }) => {
-      window.WebSocket = class extends EventTarget {
-        static OPEN = 1;
-        readyState = 1;
-        send() {}
-        close() {}
-      };
-      window.testMessages = [];
-      window.external.sendMessage = (text) =>
-        window.testMessages.push(JSON.parse(text));
-      localStorage.setItem(
-        "segra.settings.v1",
-        JSON.stringify({
-          airplaneMode: true,
-          defaultMenuItem: "Full Sessions",
-          clipClearSegmentsAfterCreatingClip: false,
-        }),
-      );
-      localStorage.setItem(
-        "segra.appstate.v1",
-        JSON.stringify({ content: [session, clip], screenshots: [] }),
-      );
-    },
-    { session, clip },
-  );
+  const session = { ...base, id: "session", type: "Session" };
+  await page.addInitScript((session) => {
+    window.WebSocket = class extends EventTarget {
+      static OPEN = 1;
+      readyState = 1;
+      send() {}
+      close() {}
+    };
+    window.testMessages = [];
+    window.external.sendMessage = (text) =>
+      window.testMessages.push(JSON.parse(text));
+    localStorage.setItem(
+      "segra.settings.v1",
+      JSON.stringify({
+        airplaneMode: true,
+        defaultMenuItem: "Full Sessions",
+        clipClearSegmentsAfterCreatingClip: false,
+      }),
+    );
+    localStorage.setItem(
+      "segra.appstate.v1",
+      JSON.stringify({ content: [session], screenshots: [] }),
+    );
+  }, session);
   await page.route("http://editor.test/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (process.env.SEGRA_UI_BASE) {
@@ -180,44 +163,88 @@ try {
       await done;
     }, time);
   };
+  const create = button(/^Create Clips?$/);
+  const add = button("Add Segment");
+  const options = button("Segment options");
+  assert.equal(await button(/^Set (start|end) here/i).count(), 0);
+  assert.equal(await button(/^Play segment/i).count(), 0);
   await seek(1.25);
-  await button(/^Set start here/).click();
-  assert.ok(await button("Create Clip").isDisabled());
-  await seek(2.75);
-  await button(/^Set end here/).click();
-  await button(/^Play segment.*00:01.500/).click();
-  await page.waitForFunction(() => {
-    const v = document.querySelector("video");
-    return v?.paused && Math.abs(v.currentTime - 2.75) < 0.002;
-  });
-  await button("Create Clip").click();
-  assert.deepEqual(
-    (await lastExport()).Segments.map((s) => [s.startTime, s.endTime]),
-    [[1.25, 2.75]],
-  );
-  await seek(4);
-  await button("New segment").click();
-  await seek(6);
-  await button(/^Set end here/).click();
-  await button("Create 2 clips").click();
-  assert.equal((await lastExport()).OutputMode, "separate");
-  await button("Combine into one clip").click();
-  assert.equal((await lastExport()).OutputMode, "combined");
+  await add.click();
+  await create.click();
+  const first = (await lastExport()).Segments[0];
+  assert.equal(first.startTime, 1.25);
+  assert.ok(first.endTime > first.startTime);
 
-  const created = await lastExport();
+  const handle = await page
+    .getByLabel("Resize segment end", { exact: true })
+    .boundingBox();
+  const track = await page.locator(".timeline-container").boundingBox();
+  assert.ok(handle && track);
+  const x = handle.x + handle.width / 2;
+  const y = handle.y + handle.height / 2;
+  const shift = track.width / 12; // One second on the unzoomed 12-second fixture.
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + shift, y, { steps: 10 });
+  await page.mouse.up();
+  await create.click();
+  const resized = (await lastExport()).Segments[0];
+  assert.equal(resized.startTime, first.startTime);
+  assert.ok(Math.abs(resized.endTime - first.endTime - 1) < 0.05);
+
+  await seek(6);
+  await add.click();
+  await create.click();
+  const separate = await lastExport();
+  assert.equal(separate.OutputMode, "separate");
+  assert.equal(separate.Segments.length, 2);
+  assert.equal(separate.Segments[0].endTime, resized.endTime);
+  assert.equal(separate.Segments[1].startTime, 6);
+
+  await options.click();
+  assert.ok(await page.getByRole("radio", { name: "Separate" }).isChecked());
+  await page.getByRole("radio", { name: "Combined" }).check();
+  await options.click();
+  await create.click();
+  const combined = await lastExport();
+  assert.equal(combined.OutputMode, "combined");
+  assert.deepEqual(combined.Segments, separate.Segments);
+
+  // Simulate the backend announcing the exported clip and linking its excerpts in the source.
+  const timeString = (t) =>
+    new Date(Math.round(t * 1000)).toISOString().slice(11, 23);
+  let offset = 0;
+  const bookmarks = combined.Segments.map((segment, index) => {
+    const bookmark = {
+      id: 10 + index,
+      type: "ClipSaved",
+      mediaId: clip.id,
+      time: timeString(segment.endTime),
+      clipStart: timeString(segment.startTime),
+      clipOffset: offset,
+    };
+    offset += segment.endTime - segment.startTime;
+    return bookmark;
+  });
   await page.evaluate(
-    (segments) =>
-      window.dispatchEvent(
-        new CustomEvent("websocket-message", {
-          detail: {
-            method: "ClipProgress",
-            content: { id: 42, progress: 100, clipIds: ["clip"], segments },
-          },
-        }),
-      ),
-    created.Segments,
+    ({ session, bookmarks, clip, segments }) => {
+      const emit = (method, content) =>
+        window.dispatchEvent(
+          new CustomEvent("websocket-message", { detail: { method, content } }),
+        );
+      emit("State", { content: [{ ...session, bookmarks }, clip] });
+      emit("ClipProgress", {
+        id: 42,
+        progress: 100,
+        clipIds: [clip.id],
+        segments,
+      });
+    },
+    { session, bookmarks, clip, segments: combined.Segments },
   );
-  await button("View created clip").click();
+  await button(`Clip Saved at ${bookmarks[0].time}`).click();
+  assert.equal(await button("View created clip").count(), 0);
+  await button("Open Clip").click();
   await button("Copy").click();
   assert.ok(
     await page.evaluate(() =>
@@ -228,27 +255,15 @@ try {
       ),
     ),
   );
-  await button("Adjust cut").click();
-  await page.waitForFunction(() => {
-    const v = document.querySelector("video");
-    return v?.paused && !v.seeking && Math.abs(v.currentTime - 2) < 0.001;
-  });
-  assert.match(await button(/^Set start here/).innerText(), /00:02\.000/);
-  assert.match(await button(/^Set end here/).innerText(), /00:05\.000/);
-  await seek(1);
-  await button(/^Set start here/).click();
-  await button("Save adjusted clip").click();
-  assert.deepEqual(
-    (await lastExport()).Segments.map((s) => [
-      s.contentId,
-      s.startTime,
-      s.endTime,
-    ]),
-    [["session", 1, 5]],
-  );
+
+  // A previously selected combined output must survive a fresh player instance.
+  await page.reload();
+  await page.locator('[data-content-id="session"]').click();
+  await options.click();
+  assert.ok(await page.getByRole("radio", { name: "Combined" }).isChecked());
   assert.deepEqual(errors, []);
   console.log(
-    "Clip editor passed: timed preview, separate/combined export, review, copy, and source adjustment with unrelated drafts.",
+    "Classic clip editor passed: Add Segment, drag to trim, separate and combined output, saved output preference, Open Clip and Copy.",
   );
 } finally {
   await browser?.close();

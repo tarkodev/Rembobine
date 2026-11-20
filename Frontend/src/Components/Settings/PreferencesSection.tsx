@@ -83,7 +83,7 @@ export default function PreferencesSection({ settings, updateSettings }: Prefere
       key: 'showClipToolsOnClips',
       label: 'Show Clip Tools on Clips and Highlights',
       description:
-        'Shows the cut controls for selecting, previewing and exporting a passage from a clip or highlight.',
+        'Shows the Create Clip and Add Segment buttons when watching a clip or highlight.',
     },
     {
       key: 'showImportInClipsAndHighlights',

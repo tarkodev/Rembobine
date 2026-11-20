@@ -15,9 +15,6 @@ const SegmentCard: React.FC<SegmentCardProps> = React.memo(
     moveCard,
     formatTime,
     isHovered,
-    selected,
-    selectable,
-    onSelect,
     segmentHover,
     removeSegment,
     audioTrackNames,
@@ -102,7 +99,7 @@ const SegmentCard: React.FC<SegmentCardProps> = React.memo(
     return (
       <div
         ref={dragDropRef}
-        className={`mb-2 cursor-move w-full relative rounded-xl transition-all duration-200 !outline !outline-1 ${selected || isHovered ? '!outline-primary' : '!outline-base-400'}`}
+        className={`mb-2 cursor-move w-full relative rounded-xl transition-all duration-200 !outline !outline-1 ${isHovered ? '!outline-primary' : '!outline-base-400'}`}
         style={{ opacity: isDragging ? 0.3 : 1 }}
         onMouseEnter={(e) => segmentHover.enter(segment.id, e)}
         onMouseMove={segmentHover.move}
@@ -164,15 +161,6 @@ const SegmentCard: React.FC<SegmentCardProps> = React.memo(
           </div>
         )}
 
-        <button
-          type="button"
-          data-player-button
-          aria-label={`Select segment ${index + 1}, ${formatTime(startTime)} to ${formatTime(endTime)}`}
-          aria-pressed={selected}
-          disabled={!selectable}
-          onClick={() => onSelect(segment)}
-          className="absolute inset-0 rounded-xl cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
-        />
         {hasAudioTracks && (
           <div className="absolute top-1.5 right-1.5">
             <button

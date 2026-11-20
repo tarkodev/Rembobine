@@ -6,13 +6,12 @@ import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
-import { formatTimecode, timeStringToSeconds } from '../Utils/NumberUtils';
+import { timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import type { LinkedMedia } from '../Context/SelectedVideoContext';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useSegments } from '../Context/SegmentsContext';
-import { useClipping } from '../Hooks/useClipping';
 import { useUploads } from '../Context/UploadContext';
 import { useModal } from '../Context/ModalContext';
 import UploadModal from '../Components/UploadModal';
@@ -22,10 +21,10 @@ import { crosshair2Dot, soccerBall } from '@lucide/lab';
 import {
   Trash2,
   Settings,
+  SquarePlus,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
   Clapperboard,
-  ListVideo,
   HeartHandshake,
   Swords,
   Pause,
@@ -48,7 +47,6 @@ import {
 import { Volume1, Volume2, VolumeX, Maximize, Minimize, Check } from 'lucide';
 import { MorphIcon } from 'morphicons/react';
 import SegmentCard from '../Components/SegmentCard';
-import SegmentCutControls, { type CutEdge } from '../Components/SegmentCutControls';
 import { useHoverIntent } from '../Hooks/useHoverIntent';
 import AudioTrackMixer, { AUDIO_TRACK_MENU_CLASS } from '../Components/AudioTrackMixer';
 import { hasCustomAudioMix, toggleTrackInMix } from '../Utils/AudioMixUtils';
@@ -178,10 +176,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   );
   const updateSettings = useSettingsUpdater();
   const { uploads } = useUploads();
-  const { latestExport } = useClipping();
-  const exportedClip = latestExport?.sourceIds.includes(video.id)
-    ? appState.content.find((item) => item.id === latestExport.clipIds[0])
-    : undefined;
   const { openModal, closeModal, isModalOpen } = useModal();
   const { setSelectedVideo, playlist, resumePlayback, openLinkedMedia, goBack } =
     useSelectedVideo();
@@ -215,22 +209,26 @@ export default function VideoComponent({ video }: { video: Content }) {
   const confirmDelete = useDeleteConfirmation();
   const {
     segments,
+    activeSegmentId,
+    setActiveSegmentId,
     addSegment,
     updateSegment,
     setSegmentThumbnail,
     removeSegment,
     updateSegmentsArray,
     clearAllSegments,
-    activeSegmentId,
-    setActiveSegmentId,
   } = useSegments();
+  const adjustedCut = segments.find(
+    (seg) => seg.id === activeSegmentId && seg.contentId === video.id && seg.adjustedFrom,
+  );
+  const showClipTools =
+    settings.showClipToolsOnClips ||
+    video.type === 'Session' ||
+    video.type === 'Buffer' ||
+    !!adjustedCut;
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
-  const previewSegmentRef = useRef<Segment | null>(null);
-  const cancelSegmentPreview = useCallback(() => {
-    previewSegmentRef.current = null;
-  }, []);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -462,8 +460,10 @@ export default function VideoComponent({ video }: { video: Content }) {
   const resumeAfterScrubRef = useRef(false);
   const scrubCandidateRef = useRef<number | null>(null);
   const [showNoSegmentsIndicator, setShowNoSegmentsIndicator] = useState(false);
-  const [segmentListOpen, setSegmentListOpen] = useState<boolean | null>(null);
-  const showSegmentList = segments.length > 0 && (segmentListOpen ?? segments.length > 1);
+  const [clipOutputMode, setClipOutputMode] = useState<'combined' | 'separate'>(() => {
+    const saved = localStorage.getItem('segra-clip-output-mode');
+    return saved === 'combined' ? 'combined' : 'separate';
+  });
   const [volume, setVolume] = useState(() => {
     // Initialize volume from localStorage or default to 1
     const savedVolume = localStorage.getItem('segra-volume');
@@ -473,6 +473,9 @@ export default function VideoComponent({ video }: { video: Content }) {
     // Initialize muted state from localStorage or default to false
     return localStorage.getItem('segra-muted') === 'true';
   });
+  useEffect(() => {
+    localStorage.setItem('segra-clip-output-mode', clipOutputMode);
+  }, [clipOutputMode]);
   const [playbackRate, setPlaybackRate] = useState(() => {
     const saved = localStorage.getItem('segra-playbackRate');
     return saved ? parseFloat(saved) : 1;
@@ -509,26 +512,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
   const [hoveredSegmentId, setHoveredSegmentId] = useState<number | null>(null);
-  const [pendingBound, setPendingBound] = useState<{
-    edge: CutEdge;
-    time: number;
-    thumbnail?: string;
-  } | null>(null);
-  const selectedSegment = useMemo(() => {
-    if (pendingBound) return undefined;
-    const local = segments.filter((s) => s.contentId === video.id);
-    return local.find((s) => s.id === activeSegmentId) ?? local[local.length - 1];
-  }, [pendingBound, segments, activeSegmentId, video.id]);
-  const segmentSources = useMemo(() => {
-    const sources = new Map(appState.content.map((source) => [source.id, source]));
-    sources.set(video.id, video); // Active recording snapshots may only exist in the player.
-    return sources;
-  }, [appState.content, video]);
-  const showClipTools =
-    settings.showClipToolsOnClips ||
-    video.type === 'Session' ||
-    video.type === 'Buffer' ||
-    segments.some((seg) => seg.contentId === video.id && seg.adjustedFrom);
   const segmentHover = useHoverIntent<number>(setHoveredSegmentId);
   const [dragState, setDragState] = useState<{ id: number | null; offset: number }>({
     id: null,
@@ -608,13 +591,13 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   useEffect(() => {
     if (
-      selectedSegment &&
-      !selectedSegment.thumbnailDataUrl &&
-      !thumbnailReqTokenRef.current.has(selectedSegment.id)
+      adjustedCut &&
+      !adjustedCut.thumbnailDataUrl &&
+      !thumbnailReqTokenRef.current.has(adjustedCut.id)
     ) {
-      void refreshSegmentThumbnail(selectedSegment);
+      void refreshSegmentThumbnail(adjustedCut);
     }
-  }, [selectedSegment]);
+  }, [adjustedCut]);
 
   // Initialize video metadata and setup keyboard controls
   useEffect(() => {
@@ -818,13 +801,6 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   useEffect(() => {
     segmentsDirtyRef.current = true;
-    const preview = previewSegmentRef.current;
-    if (preview) {
-      const current = segments.find((s) => s.id === preview.id);
-      if (current?.startTime !== preview.startTime || current.endTime !== preview.endTime) {
-        cancelSegmentPreview();
-      }
-    }
   }, [segments]);
 
   // Clean up overrides when multi-track is deactivated
@@ -851,17 +827,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     const vid = videoRef.current;
     if (!vid) return;
     let rafId = 0;
-    const checkPreviewEnd = () => {
-      const preview = previewSegmentRef.current;
-      if (preview && !vid.seeking && vid.currentTime >= preview.endTime) {
-        cancelSegmentPreview();
-        vid.pause();
-        vid.currentTime = preview.endTime;
-        setCurrentTime(preview.endTime);
-      }
-    };
     const tick = () => {
-      checkPreviewEnd();
       // While resizing a segment the video previews the dragged edge; the
       // playhead must not follow it.
       if (resizeDirectionRef.current == null && (!resumePlayback || initialSeekStarted.current)) {
@@ -873,9 +839,9 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (at.isMultiTrack) {
         const t = vid.currentTime;
         const segs = segmentsRef.current;
-        const activeSeg =
-          previewSegmentRef.current ??
-          segs.find((s) => s.contentId === video.id && t >= s.startTime && t <= s.endTime);
+        const activeSeg = segs.find(
+          (s) => s.contentId === video.id && t >= s.startTime && t <= s.endTime,
+        );
         const activeId = activeSeg?.id ?? null;
 
         if (activeId !== activeSegmentIdRef.current || segmentsDirtyRef.current) {
@@ -900,16 +866,13 @@ export default function VideoComponent({ video }: { video: Content }) {
     };
     const onPause = () => {
       cancelAnimationFrame(rafId);
-      if (vid.paused) cancelSegmentPreview();
     };
     vid.addEventListener('play', onPlay);
     vid.addEventListener('pause', onPause);
-    vid.addEventListener('timeupdate', checkPreviewEnd);
     if (!vid.paused) onPlay();
     return () => {
       vid.removeEventListener('play', onPlay);
       vid.removeEventListener('pause', onPause);
-      vid.removeEventListener('timeupdate', checkPreviewEnd);
       cancelAnimationFrame(rafId);
     };
   }, []);
@@ -1196,7 +1159,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   };
 
   const skipTime = (seconds: number) => {
-    cancelSegmentPreview();
     if (videoRef.current) {
       const newTime = videoRef.current.currentTime + seconds;
       const clamped = Math.max(0, Math.min(newTime, videoRef.current.duration));
@@ -1347,7 +1309,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Handle clicks on the timeline to seek video
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isInteracting || !scrollContainerRef.current) return;
-    cancelSegmentPreview();
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const clickPos = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
     const newTime = clickPos / pixelsPerSecond;
@@ -1361,7 +1322,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Handle timeline marker drag interactions
   const handleMarkerDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    cancelSegmentPreview();
     const vid = videoRef.current;
     if (vid && !vid.paused) {
       resumeAfterScrubRef.current = true;
@@ -1495,33 +1455,18 @@ export default function VideoComponent({ video }: { video: Content }) {
     }
   };
 
-  const markSegmentBound = (edge: CutEdge, startNew = false) => {
-    const player = videoRef.current;
-    if (!player || !Number.isFinite(player.duration)) return;
-    const time = Math.max(0, Math.min(player.currentTime, player.duration));
-    if (edge === 'start' ? time >= player.duration : time <= 0) return;
-    cancelSegmentPreview();
-    if (selectedSegment && !startNew) {
-      const startTime = edge === 'start' ? time : selectedSegment.startTime;
-      const endTime = edge === 'end' ? time : selectedSegment.endTime;
-      if (startTime >= endTime) return;
-      const updated = { ...selectedSegment, startTime, endTime };
-      updateSegment(updated);
-      if (edge === 'start') void refreshSegmentThumbnail(updated);
-      return;
-    }
-    if (!pendingBound || pendingBound.edge === edge || startNew) {
-      setPendingBound({
-        edge,
-        time,
-        thumbnail: edge === 'start' ? captureCurrentFrame() : undefined,
-      });
-      return;
-    }
-    const start = edge === 'start' ? time : pendingBound.time;
-    const end = edge === 'end' ? time : pendingBound.time;
-    if (start >= end) return;
-    const instantThumbnail = edge === 'start' ? captureCurrentFrame() : pendingBound.thumbnail;
+  // Add a new segment at the current video position
+  const handleAddSegment = async () => {
+    if (!videoRef.current) return;
+    const start = currentTime;
+    // Default to 10% of the visible timeline, capped at 2 minutes and clamped to video duration
+    const visibleDuration = duration / zoom;
+    const segmentDuration = Math.min(120, Math.max(1, visibleDuration * 0.1));
+    const end = Math.min(start + segmentDuration, duration);
+
+    // Use the frame already on screen as an instant thumbnail; the server
+    // thumbnail crossfades in once fetched.
+    const instantThumbnail = captureCurrentFrame();
     const previousSegment = [...segments].reverse().find((s) => s.contentId === video.id);
 
     const newSegment: Segment = {
@@ -1544,50 +1489,26 @@ export default function VideoComponent({ video }: { video: Content }) {
           : undefined,
     };
     addSegment(newSegment);
-    setPendingBound(null);
-  };
-
-  const playSegment = () => {
-    const player = videoRef.current;
-    if (!selectedSegment || !player) return;
-    previewSegmentRef.current = selectedSegment;
-    player.currentTime = selectedSegment.startTime;
-    setCurrentTime(selectedSegment.startTime);
-    void player.play().catch(() => {
-      if (previewSegmentRef.current === selectedSegment) cancelSegmentPreview();
-    });
-  };
-
-  const selectSegment = (segment: Segment) => {
-    const linked = segment.contentId !== video.id;
-    const source = segmentSources.get(segment.contentId);
-    if (!source) return;
-    cancelSegmentPreview();
-    setActiveSegmentId(segment.id);
-    setPendingBound(null);
-    if (linked) {
-      const player = videoRef.current;
-      openLinkedMedia(
-        { type: 'video', video: source },
-        player ? { time: player.currentTime, paused: player.paused } : undefined,
-        segment.startTime,
-      );
+    // The instant frame capture is good enough for the initial thumbnail, so
+    // only fall back to ffmpeg generation if the capture failed. Later moves
+    // and resizes regenerate via ffmpeg as usual.
+    if (!instantThumbnail) {
+      refreshSegmentThumbnail(newSegment);
     }
   };
 
   // Create a clip from current segments
-  const handleCreateClip = (combine = false) => {
-    if (pendingBound) return;
+  const handleCreateClip = () => {
     if (segments.length === 0) {
       setShowNoSegmentsIndicator(true);
       setTimeout(() => setShowNoSegmentsIndicator(false), 1300);
       return;
     }
 
-    // Adjusting an existing export saves this cut without consuming unrelated drafts.
-    const exporting = selectedSegment?.adjustedFrom && !combine ? [selectedSegment] : segments;
+    // A cut reopened from its source saves on its own, including when other videos have drafts.
+    const exporting = adjustedCut ? [adjustedCut] : segments;
     const params = {
-      OutputMode: combine || exporting.length === 1 ? 'combined' : 'separate',
+      OutputMode: exporting.length === 1 ? 'combined' : clipOutputMode,
       Segments: exporting.map((s) => ({
         id: s.id,
         contentId: s.contentId,
@@ -1672,13 +1593,13 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   // Start a potential drag on mousedown without blocking click-through
   const handleSegmentMouseDown = (e: React.MouseEvent<HTMLDivElement>, id: number) => {
-    if (pendingBound || e.button !== 0 || !scrollContainerRef.current) return;
+    if (!scrollContainerRef.current) return;
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const dragPos = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
     const cursorTime = dragPos / pixelsPerSecond;
     const seg = segments.find((s) => s.id === id);
     if (seg) {
-      selectSegment(seg);
+      setActiveSegmentId(id);
       dragCandidateRef.current = {
         id,
         startClientX: e.clientX,
@@ -1808,7 +1729,6 @@ export default function VideoComponent({ video }: { video: Content }) {
     id: number,
     direction: 'start' | 'end',
   ) => {
-    if (pendingBound || e.button !== 0) return;
     // Do not stop propagation so timeline click can still happen
     resizeCandidateRef.current = { id, direction, startClientX: e.clientX };
     // Freeze playback at the grab point so the cursor restore isn't drifted
@@ -2221,7 +2141,6 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   const seekToBookmark = useCallback(
     (bookmark: Bookmark) => {
-      cancelSegmentPreview();
       const seekTo = bookmarkStartTime(bookmark);
       const player = videoRef.current;
       if (player) {
@@ -2231,7 +2150,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       }
       setCurrentTime(seekTo);
     },
-    [bookmarkStartTime, cancelSegmentPreview],
+    [bookmarkStartTime],
   );
 
   const selectBookmark = useCallback(
@@ -2273,7 +2192,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   }, [video.matches, duration]);
 
   const seekToTime = (time: number) => {
-    cancelSegmentPreview();
     setCurrentTime(time);
     if (videoRef.current) videoRef.current.currentTime = time;
   };
@@ -2572,7 +2490,6 @@ export default function VideoComponent({ video }: { video: Content }) {
                     step={0.01}
                     value={Math.min(currentTime, duration)}
                     onChange={(e) => {
-                      cancelSegmentPreview();
                       const t = parseFloat(e.target.value);
                       setCurrentTime(t);
                       if (videoRef.current) videoRef.current.currentTime = t;
@@ -2639,14 +2556,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                     </div>
 
                     <span className="ml-2 text-xs tabular-nums text-white/90">
-                      {formatTimecode(
-                        resizingSegmentId !== null && selectedSegment && resizeDirection
-                          ? resizeDirection === 'start'
-                            ? selectedSegment.startTime
-                            : selectedSegment.endTime
-                          : currentTime,
-                      )}{' '}
-                      / {formatTime(duration)}
+                      {formatTime(currentTime)} / {formatTime(duration)}
                     </span>
                   </div>
 
@@ -2821,35 +2731,8 @@ export default function VideoComponent({ video }: { video: Content }) {
               </div>
             </div>
           </div>
-          {showClipTools && (
-            <SegmentCutControls
-              start={
-                pendingBound
-                  ? pendingBound.edge === 'start'
-                    ? pendingBound.time
-                    : undefined
-                  : selectedSegment?.startTime
-              }
-              end={
-                pendingBound
-                  ? pendingBound.edge === 'end'
-                    ? pendingBound.time
-                    : undefined
-                  : selectedSegment?.endTime
-              }
-              cursor={currentTime}
-              duration={duration}
-              ready={duration > 0 && !videoUndecodable}
-              pending={!!pendingBound}
-              hint={showNoSegmentsIndicator}
-              onMark={markSegmentBound}
-              onPreview={playSegment}
-              onNew={() => markSegmentBound('start', true)}
-              onCancel={() => setPendingBound(null)}
-            />
-          )}
           <div
-            className={`relative w-full pt-1 overflow-x-scroll overflow-y-hidden select-none shrink-0 timeline-wrapper ${showClipTools ? '' : 'mt-auto'}`}
+            className="relative w-full mt-auto pt-1 overflow-x-scroll overflow-y-hidden select-none shrink-0 timeline-wrapper"
             ref={scrollContainerRef}
             onMouseMove={(e) => {
               handleSegmentDrag(e);
@@ -2935,13 +2818,6 @@ export default function VideoComponent({ video }: { video: Content }) {
                     }}
                   />
                 )}
-                {pendingBound && (
-                  <div
-                    className="absolute inset-y-0 z-10 w-0.5 bg-primary pointer-events-none"
-                    style={{ left: `${pendingBound.time * pixelsPerSecond}px` }}
-                    title={`${pendingBound.edge === 'start' ? 'Start' : 'End'} ${formatTimecode(pendingBound.time)}`}
-                  />
-                )}
                 {sortedSegments.map((seg) => {
                   const left = seg.startTime * pixelsPerSecond;
                   const width = (seg.endTime - seg.startTime) * pixelsPerSecond;
@@ -2953,7 +2829,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                     <div
                       key={seg.id}
                       className={`absolute top-0 left-0 h-full cursor-move ${hidden ? 'hidden' : ''} transition-colors rounded-r-sm rounded-l-sm shadow-md
-                                                bg-primary/20 border ${selectedSegment?.id === seg.id ? 'border-primary/80' : 'border-primary/20'}`}
+                                                bg-primary/20 border border-primary/20`}
                       style={{ left: `${left}px`, width: `${width}px` }}
                       onMouseEnter={(e) => segmentHover.enter(seg.id, e)}
                       onMouseMove={segmentHover.move}
@@ -3016,15 +2892,6 @@ export default function VideoComponent({ video }: { video: Content }) {
                           </button>
                         )}
 
-                      {resizingSegmentId === seg.id && resizeDirection && (
-                        <span
-                          className={`absolute bottom-1 z-20 px-1.5 py-0.5 rounded bg-base-100 text-xs font-mono tabular-nums text-accent pointer-events-none ${resizeDirection === 'start' ? 'left-1' : 'right-1'}`}
-                        >
-                          {formatTimecode(
-                            resizeDirection === 'start' ? seg.startTime : seg.endTime,
-                          )}
-                        </span>
-                      )}
                       <div
                         className="absolute top-0 -left-[7px] z-20 w-[14px] h-full bg-transparent cursor-col-resize pointer-events-auto"
                         onMouseDown={(e) => handleResizeMouseDown(e, seg.id, 'start')}
@@ -3225,59 +3092,29 @@ export default function VideoComponent({ video }: { video: Content }) {
                     variant="primary"
                     size="sm"
                     className="h-10 hover:text-accent"
-                    disabled={!!pendingBound}
-                    onClick={() => handleCreateClip()}
+                    onClick={handleCreateClip}
                   >
                     <Clapperboard className="w-5 h-5" />
-                    {selectedSegment?.adjustedFrom
-                      ? 'Save adjusted clip'
-                      : segments.length > 1
-                        ? `Create ${segments.length} clips`
-                        : 'Create Clip'}
+                    <span className="grid justify-items-start">
+                      <span className="col-start-1 row-start-1 invisible" aria-hidden="true">
+                        Create Clips
+                      </span>
+                      <span className="col-start-1 row-start-1">
+                        {!adjustedCut && clipOutputMode === 'separate' && segments.length > 1
+                          ? 'Create Clips'
+                          : 'Create Clip'}
+                      </span>
+                    </span>
                   </Button>
-                  {segments.length > 1 && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-10"
-                      disabled={!!pendingBound}
-                      onClick={() => handleCreateClip(true)}
-                    >
-                      Combine into one clip
-                    </Button>
-                  )}
-                  {segments.length > 0 && (
-                    <Button
-                      size="sm"
-                      icon
-                      aria-label="Segment list"
-                      title="Segment list"
-                      aria-expanded={showSegmentList}
-                      onClick={() => setSegmentListOpen(!showSegmentList)}
-                    >
-                      <ListVideo size={18} />
-                    </Button>
-                  )}
-                  {exportedClip && latestExport && (
-                    <Button
-                      size="sm"
-                      className="h-10"
-                      onClick={() =>
-                        openLinkedMedia(
-                          { type: 'video', video: exportedClip, playlist: latestExport.clipIds },
-                          videoRef.current
-                            ? {
-                                time: videoRef.current.currentTime,
-                                paused: videoRef.current.paused,
-                              }
-                            : undefined,
-                          0,
-                        )
-                      }
-                    >
-                      {latestExport.clipIds.length > 1 ? 'View created clips' : 'View created clip'}
-                    </Button>
-                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className={`h-10 hover:text-accent ${showNoSegmentsIndicator ? 'segment-hint-flash' : ''}`}
+                    onClick={handleAddSegment}
+                  >
+                    <SquarePlus className="w-5 h-5" />
+                    <span>Add Segment</span>
+                  </Button>
                 </>
               )}
               {video.type !== 'Session' && (
@@ -3350,92 +3187,102 @@ export default function VideoComponent({ video }: { video: Content }) {
             </div>
           </div>
         </div>
-        {showSegmentList && (
-          <div className="flex flex-col h-full border-l bg-base-300 text-neutral-content w-52 2xl:w-70.25 border-base-400">
-            <div className="flex-1 pt-4 pl-4 pr-0.5 overflow-y-scroll">
-              {segments.map((seg, index) => (
-                <SegmentCard
-                  key={seg.id}
-                  segment={seg}
-                  index={index}
-                  moveCard={moveCard}
-                  formatTime={formatTimecode}
-                  selected={selectedSegment?.id === seg.id}
-                  selectable={segmentSources.has(seg.contentId)}
-                  onSelect={selectSegment}
-                  isHovered={hoveredSegmentId === seg.id}
-                  segmentHover={segmentHover}
-                  removeSegment={removeSegment}
-                  audioTrackNames={segmentSources.get(seg.contentId)?.audioTrackNames}
-                  audioTrackTypes={segmentSources.get(seg.contentId)?.audioTrackTypes}
-                  onAudioMixChange={(id, mix) =>
-                    updateSegment({ ...segments.find((s) => s.id === id)!, ...mix })
-                  }
-                />
-              ))}
-              {segments.length > 1 && (
-                <div className="flex items-center justify-center pb-1">
-                  <span
-                    className="text-sm font-medium text-gray-300 opacity-50 tabular-nums"
-                    title="Total length of all segments"
-                  >
-                    {formatTime(totalSegmentsDuration)}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="relative flex items-center gap-2 px-4 pt-2 pb-4">
+        <div className="flex flex-col h-full border-l bg-base-300 text-neutral-content w-52 2xl:w-70.25 border-base-400">
+          <div className="flex-1 pt-4 pl-4 pr-0.5 overflow-y-scroll">
+            {segments.map((seg, index) => (
+              <SegmentCard
+                key={seg.id}
+                segment={seg}
+                index={index}
+                moveCard={moveCard}
+                formatTime={formatTime}
+                isHovered={hoveredSegmentId === seg.id}
+                segmentHover={segmentHover}
+                removeSegment={removeSegment}
+                audioTrackNames={video.audioTrackNames}
+                audioTrackTypes={video.audioTrackTypes}
+                onAudioMixChange={(id, mix) =>
+                  updateSegment({ ...segments.find((s) => s.id === id)!, ...mix })
+                }
+              />
+            ))}
+            {clipOutputMode === 'combined' && segments.length > 0 && (
+              <div className="flex items-center justify-center pb-1">
+                <span
+                  className="text-sm font-medium text-gray-300 opacity-50 tabular-nums"
+                  title="Total length of all segments"
+                >
+                  {formatTime(totalSegmentsDuration)}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="relative flex items-center gap-2 px-4 pt-2 pb-4">
+            <Button
+              variant="primary"
+              size="sm"
+              className="flex-1 h-10 py-0 hover:text-accent transition-[color,background-color,border-color,opacity] duration-300"
+              onClick={handleClearSegments}
+              disabled={segments.length === 0}
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Clear</span>
+            </Button>
+            <div
+              ref={segmentOptionsRef}
+              className={`dropdown dropdown-top dropdown-end static! ${segmentOptionsOpen ? 'dropdown-open' : ''}`}
+            >
               <Button
                 variant="primary"
                 size="sm"
-                className="flex-1 h-10 py-0 hover:text-accent transition-[color,background-color,border-color,opacity] duration-300"
-                onClick={handleClearSegments}
-                disabled={segments.length === 0}
+                className="h-10 px-2.5 hover:text-accent"
+                aria-label="Segment options"
+                aria-expanded={segmentOptionsOpen}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (segmentOptionsOpen) closeSegmentOptions();
+                  else setSegmentOptionsOpen(true);
+                }}
               >
-                <Trash2 className="w-4 h-4" />
-                <span>Clear</span>
+                <Settings className="w-4 h-4" />
               </Button>
-              <div
-                ref={segmentOptionsRef}
-                className={`dropdown dropdown-top dropdown-end static! ${segmentOptionsOpen ? 'dropdown-open' : ''}`}
+              <ul
+                tabIndex={0}
+                className="dropdown-content menu bg-base-300 border border-base-400 rounded-lg z-[100] left-4! p-1.5 mb-2 shadow"
               >
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="h-10 px-2.5 hover:text-accent"
-                  aria-label="Segment options"
-                  aria-expanded={segmentOptionsOpen}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    if (segmentOptionsOpen) closeSegmentOptions();
-                    else setSegmentOptionsOpen(true);
-                  }}
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-300 border border-base-400 rounded-lg z-[100] left-4! p-1.5 mb-2 shadow"
-                >
-                  <li>
+                <li>
+                  <label className="flex items-center gap-2 px-2! text-sm text-gray-300 hover:bg-transparent! active:bg-transparent!">
+                    <input
+                      type="checkbox"
+                      name="clipClearSegmentsAfterCreatingClip"
+                      checked={settings.clipClearSegmentsAfterCreatingClip}
+                      onChange={(e) =>
+                        updateSettings({ clipClearSegmentsAfterCreatingClip: e.target.checked })
+                      }
+                      className="checkbox checkbox-sm checkbox-accent"
+                    />
+                    Clear segments after clipping
+                  </label>
+                </li>
+                <li className="menu-title px-2 pt-2 pb-1 text-xs">Clip output</li>
+                {(['combined', 'separate'] as const).map((mode) => (
+                  <li key={mode}>
                     <label className="flex items-center gap-2 px-2! text-sm text-gray-300 hover:bg-transparent! active:bg-transparent!">
                       <input
-                        type="checkbox"
-                        name="clipClearSegmentsAfterCreatingClip"
-                        checked={settings.clipClearSegmentsAfterCreatingClip}
-                        onChange={(e) =>
-                          updateSettings({ clipClearSegmentsAfterCreatingClip: e.target.checked })
-                        }
-                        className="checkbox checkbox-sm checkbox-accent"
+                        type="radio"
+                        name="clipOutputMode"
+                        checked={clipOutputMode === mode}
+                        onChange={() => setClipOutputMode(mode)}
+                        className="radio radio-sm radio-accent"
                       />
-                      Clear segments after clipping
+                      {mode === 'combined' ? 'Combined' : 'Separate'}
                     </label>
                   </li>
-                </ul>
-              </div>
+                ))}
+              </ul>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </DndProvider>
   );

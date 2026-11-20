@@ -665,9 +665,6 @@ export interface SegmentCardProps {
   moveCard: (dragIndex: number, hoverIndex: number) => void;
   formatTime: (time: number) => string;
   isHovered: boolean;
-  selected: boolean;
-  selectable: boolean;
-  onSelect: (segment: Segment) => void;
   segmentHover: HoverIntentHandlers<number>;
   removeSegment: (id: number) => void;
   audioTrackNames?: string[];
