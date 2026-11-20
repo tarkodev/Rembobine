@@ -112,14 +112,22 @@ export default function ScreenshotViewer({
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-base-200 p-4">
       <h1 className="sr-only">{screenshot.title}</h1>
-      <MediaInfoBar
-        createdAt={screenshot.createdAt}
-        fileSize={screenshot.fileSize ?? '—'}
-        filePath={screenshot.filePath}
-        game={screenshot.game ?? undefined}
-        gameIcon={gameIcon}
-        onBack={onBack}
-      />
+      {!isFullscreen && (
+        <header className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <MediaInfoBar
+            className="min-w-0 flex-1 basis-80"
+            createdAt={screenshot.createdAt}
+            fileSize={screenshot.fileSize ?? '—'}
+            filePath={screenshot.filePath}
+            game={screenshot.game ?? undefined}
+            gameIcon={gameIcon}
+            onBack={onBack}
+          />
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <ScreenshotActions key={screenshot.filePath} screenshot={screenshot} inViewer />
+          </div>
+        </header>
+      )}
       <div
         ref={stageRef}
         className={`flex items-center justify-center overflow-hidden ${
@@ -198,41 +206,36 @@ export default function ScreenshotViewer({
       </div>
       {!isFullscreen && (
         <div className="flex shrink-0 flex-wrap items-center gap-3 pt-2">
-          <div className="flex flex-wrap items-center gap-3">
-            {navigation && (
-              <div className="join flex items-center rounded-lg border border-base-400 bg-base-300">
-                <button
-                  type="button"
-                  className={navigationButtonClass}
-                  disabled={!previous}
-                  onClick={() => previous && navigation.onSelect(previous)}
-                  aria-label="Previous screenshot"
-                  title="Previous screenshot (←)"
-                >
-                  <SkipBack className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  className={navigationButtonClass}
-                  disabled={!next}
-                  onClick={() => next && navigation.onSelect(next)}
-                  aria-label="Next screenshot"
-                  title="Next screenshot (→)"
-                >
-                  <SkipForward className="h-5 w-5" />
-                </button>
-              </div>
-            )}
-            <OpenFullSessionButton
-              key={screenshot.filePath}
-              bookmarkType={BookmarkType.ScreenshotSaved}
-              mediaId={getScreenshotMediaId(screenshot)}
-              previewUrl={getContentFileUrl(screenshot.filePath)}
-            />
-          </div>
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <ScreenshotActions key={screenshot.filePath} screenshot={screenshot} inViewer />
-          </div>
+          {navigation && (
+            <div className="join flex items-center rounded-lg border border-base-400 bg-base-300">
+              <button
+                type="button"
+                className={navigationButtonClass}
+                disabled={!previous}
+                onClick={() => previous && navigation.onSelect(previous)}
+                aria-label="Previous screenshot"
+                title="Previous screenshot (←)"
+              >
+                <SkipBack className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className={navigationButtonClass}
+                disabled={!next}
+                onClick={() => next && navigation.onSelect(next)}
+                aria-label="Next screenshot"
+                title="Next screenshot (→)"
+              >
+                <SkipForward className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+          <OpenFullSessionButton
+            key={screenshot.filePath}
+            bookmarkType={BookmarkType.ScreenshotSaved}
+            mediaId={getScreenshotMediaId(screenshot)}
+            previewUrl={getContentFileUrl(screenshot.filePath)}
+          />
         </div>
       )}
     </section>

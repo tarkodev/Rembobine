@@ -4,6 +4,7 @@ import Button from './Button';
 import LibraryGameIcon from './LibraryGameIcon';
 
 interface MediaInfoBarProps {
+  className?: string;
   createdAt: string;
   recordedEnd?: boolean;
   fileSize: string;
@@ -14,6 +15,7 @@ interface MediaInfoBarProps {
 }
 
 export default function MediaInfoBar({
+  className = 'mb-2 shrink-0',
   createdAt,
   recordedEnd,
   fileSize,
@@ -43,7 +45,9 @@ export default function MediaInfoBar({
   const hasGame = !!game && game !== 'Unknown';
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1 mb-2 text-xs leading-tight text-gray-300 border rounded-lg shrink-0 bg-base-300 border-base-400">
+    <div
+      className={`flex items-center gap-2 px-2 py-1 text-xs leading-tight text-gray-300 border rounded-lg bg-base-300 border-base-400 ${className}`}
+    >
       <Button
         variant="ghost"
         size="xs"
