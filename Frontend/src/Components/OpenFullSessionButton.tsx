@@ -5,9 +5,12 @@ import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import { useSegments } from '../Context/SegmentsContext';
 import { useSettings } from '../Context/SettingsContext';
 import { useRecordingSnapshot } from '../Hooks/useRecordingSnapshot';
-import { BookmarkType, type Bookmark, type Content } from '../Models/types';
-import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
-import { timeStringToSeconds } from '../Utils/NumberUtils';
+import { BookmarkType, type Content } from '../Models/types';
+import {
+  findSourceExcerpts,
+  getBookmarkPlaybackStart,
+  type SourceExcerpt,
+} from '../Utils/BookmarkUtils';
 import Button from './Button';
 
 interface OpenFullSessionButtonProps {
@@ -17,13 +20,6 @@ interface OpenFullSessionButtonProps {
   videoRef?: RefObject<HTMLVideoElement | null>;
   clipTime?: number;
   duration?: number;
-}
-
-interface SourceExcerpt {
-  source?: Content;
-  start: number;
-  end: number;
-  offset?: number;
 }
 
 export default function OpenFullSessionButton({
@@ -41,30 +37,7 @@ export default function OpenFullSessionButton({
   const { segments, addSegment, setActiveSegmentId } = useSegments();
   const isClip = bookmarkType === BookmarkType.ClipSaved;
   const links = useMemo(() => {
-    const matches: SourceExcerpt[] = [];
-    if (!mediaId) return matches;
-    const excerpts = isClip
-      ? content.find((item) => item.id === mediaId)?.sourceExcerpts
-      : undefined;
-    for (const excerpt of excerpts ?? []) {
-      const source = content.find((item) => item.id === excerpt.sourceId);
-      if (source)
-        matches.push({ source, start: excerpt.start, end: excerpt.end, offset: excerpt.offset });
-    }
-    const collect = (marks: Bookmark[], source?: Content) => {
-      for (const mark of marks) {
-        if (mark.type !== bookmarkType || mark.mediaId !== mediaId || mark.inherited) continue;
-        const end = timeStringToSeconds(mark.time);
-        const start = mark.clipStart == null ? end : timeStringToSeconds(mark.clipStart);
-        matches.push({ source, start, end, offset: mark.clipOffset });
-      }
-    };
-    for (const source of content) {
-      if (source.id !== mediaId && (isClip || source.type === 'Session')) {
-        collect(source.bookmarks ?? [], source);
-      }
-    }
-    if (recording?.filePath) collect(recording.bookmarks ?? []);
+    const matches = findSourceExcerpts(mediaId, bookmarkType, content, recording);
     // Prefer the original recording, then a replay, then the nearest available derived video.
     const rank = (link: SourceExcerpt) =>
       !link.source || link.source.type === 'Session' ? 0 : link.source.type === 'Buffer' ? 1 : 2;
@@ -74,15 +47,7 @@ export default function OpenFullSessionButton({
         (b.offset ?? 0) - (a.offset ?? 0) ||
         Number(b.source?.id === previousVideoId) - Number(a.source?.id === previousVideoId),
     );
-  }, [
-    content,
-    recording?.bookmarks,
-    recording?.filePath,
-    bookmarkType,
-    mediaId,
-    isClip,
-    previousVideoId,
-  ]);
+  }, [content, recording, bookmarkType, mediaId, previousVideoId]);
 
   function excerptAt(time: number | undefined, fullSessionOnly: boolean) {
     return links.find((link) => {
@@ -159,7 +124,7 @@ export default function OpenFullSessionButton({
           onClick={() => openSource(false)}
         >
           <Film className="w-5 h-5" />
-          {opening ? 'Opening…' : 'Open Full Session'}
+          {opening ? 'Openingâ€¦' : 'Open Full Session'}
         </Button>
       </span>
       {isClip && (

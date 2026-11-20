@@ -6,6 +6,7 @@ import { formatTime, formatTimecode, timeStringToSeconds } from '../Utils/Number
 
 interface BookmarkTrackProps {
   bookmarks: Bookmark[];
+  replayStarts: ReadonlyMap<number, number>;
   duration: number;
   icons: Record<BookmarkType, LucideIcon>;
   label: (type: BookmarkType) => string;
@@ -78,6 +79,7 @@ function layoutMarkers(markers: Marker[], width: number, duration: number) {
 
 export default memo(function BookmarkTrack({
   bookmarks,
+  replayStarts,
   duration,
   icons,
   label,
@@ -127,7 +129,7 @@ export default memo(function BookmarkTrack({
           const start =
             bookmark.type === BookmarkType.ClipSaved && bookmark.clipStart
               ? timeStringToSeconds(bookmark.clipStart)
-              : undefined;
+              : replayStarts.get(bookmark.id);
           return [
             {
               bookmark,
@@ -137,7 +139,7 @@ export default memo(function BookmarkTrack({
           ];
         })
         .sort((a, b) => a.time - b.time),
-    [bookmarks, duration],
+    [bookmarks, replayStarts, duration],
   );
   const { positions, rows } = useMemo(
     () =>

@@ -343,6 +343,9 @@ try {
         mediaId: id === 3 ? undefined : String(id),
       }));
       bookmarks.push(
+        { id: 25, time: "00:00:02", type: "ReplaySaved", mediaId: "replay" },
+        { id: 26, time: "00:00:07", type: "ReplaySaved", mediaId: "replay" },
+        { id: 27, time: "00:00:10", type: "ReplaySaved" },
         { id: 20, time: "00:00:08", type: "ScreenshotSaved" },
         { id: 21, time: "00:00:08", type: "ClipSaved" },
         {
@@ -360,6 +363,12 @@ try {
             content: {
               content: [
                 { ...session, bookmarks },
+                {
+                  ...session,
+                  id: "replay",
+                  type: "Buffer",
+                  duration: "00:00:03.250",
+                },
                 { ...session, id: "legacy-highlight", type: "Highlight" },
               ],
               screenshots,
@@ -423,6 +432,27 @@ try {
     zoomError.markerError < 2 && zoomError.cursorError < 3,
     JSON.stringify(zoomError),
   );
+  const checkReplayBand = async (time, start, end) => {
+    const marker = button(`Replay Saved at ${time}`).first();
+    await marker.hover();
+    const edges = await marker.evaluate((el) => {
+      const track = el.parentElement;
+      const band = track
+        .querySelector("span[aria-hidden].z-10")
+        ?.getBoundingClientRect();
+      if (!band) return null;
+      const bounds = track.getBoundingClientRect();
+      return [band.left, band.right].map(
+        (x) => (12 * (x - bounds.left)) / bounds.width,
+      );
+    });
+    assert.ok(
+      edges &&
+        Math.abs(edges[0] - start) < 0.002 &&
+        Math.abs(edges[1] - end) < 0.002,
+      JSON.stringify(edges),
+    );
+  };
   for (const fullscreen of [false, true]) {
     if (fullscreen) {
       await player.hover();
@@ -478,6 +508,20 @@ try {
       await page.keyboard.press("Escape");
     }
     await button("Clip Saved at 00:00:08, 2 of 2").first().waitFor();
+    await checkReplayBand("00:00:02", 0, 2);
+    await checkReplayBand("00:00:07", 3.75, 7);
+    const replay = button("Replay Saved at 00:00:07").first();
+    assert.match(
+      await replay.getAttribute("title"),
+      /00:03\.750 – 00:07\.000 \(00:03\.250\)/,
+    );
+    await replay.click();
+    await button("Open Replay").waitFor();
+    await page.keyboard.press("Escape");
+    assert.doesNotMatch(
+      await button("Replay Saved at 00:00:10").first().getAttribute("title"),
+      /–/,
+    );
     assert.equal(await button(/Clip Saved at 00:00:12/).count(), 0);
     assert.equal(await button(/^\d+ bookmarks$/).count(), 0);
     let previousRight = 0;
@@ -580,11 +624,27 @@ try {
                 source,
                 {
                   ...source,
+                  id: "replay",
+                  type: "Buffer",
+                  duration: "00:00:03.250",
+                },
+                {
+                  ...source,
                   id: "new-highlight",
                   type: "Highlight",
                   filePath: "X:/highlight.mp4",
+                  bookmarks: [
+                    {
+                      id: 30,
+                      time: "00:00:04",
+                      type: "ReplaySaved",
+                      mediaId: "replay",
+                      inherited: true,
+                    },
+                  ],
                   sourceExcerpts: [
                     { sourceId: source.id, start: 5, end: 8, offset: 0 },
+                    { sourceId: source.id, start: 1, end: 4, offset: 3 },
                   ],
                 },
               ],
@@ -597,6 +657,7 @@ try {
   await button("Highlights").click();
   await page.locator('[data-content-id="new-highlight"]').click();
   await isPlayingFile("X:/highlight.mp4");
+  await checkReplayBand("00:00:04", 3, 4);
   await seek(1.25);
   await button("Open Full Session").click();
   await isPlayingFile("X:/source.mp4");
