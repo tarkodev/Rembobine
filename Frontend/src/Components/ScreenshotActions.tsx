@@ -1,7 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Ellipsis, FolderOpen, PenLine, Trash2 } from 'lucide-react';
-import { useModal } from '../Context/ModalContext';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import type { Screenshot } from '../Models/types';
 import { openFileLocation } from '../Utils/FileUtils';
@@ -9,28 +8,85 @@ import { sendMessageToBackend } from '../Utils/MessageUtils';
 import Button from './Button';
 import CopyFileButton from './CopyFileButton';
 import DeleteMediaButton from './DeleteMediaButton';
-import RenameScreenshotModal from './RenameScreenshotModal';
+import InlineRenameInput from './InlineRenameInput';
 
-interface ScreenshotActionsProps {
+interface ScreenshotRenameProps {
   screenshot: Screenshot;
+  onClose: () => void;
   inViewer?: boolean;
 }
 
-export default function ScreenshotActions({
+export function ScreenshotRenameInput({ screenshot, onClose, inViewer }: ScreenshotRenameProps) {
+  return (
+    <InlineRenameInput
+      label="Rename screenshot"
+      initialValue={screenshot.hasCustomTitle === false ? '' : screenshot.title}
+      placeholder={screenshot.game || 'Screenshot'}
+      className={inViewer ? 'input input-sm h-10 w-48 max-w-full' : undefined}
+      onSave={(title) =>
+        sendMessageToBackend('RenameScreenshot', { FilePath: screenshot.filePath, Title: title })
+      }
+      onClose={onClose}
+    />
+  );
+}
+
+export function ScreenshotViewerActions({ screenshot }: { screenshot: Screenshot }) {
+  const [renaming, setRenaming] = useState(false);
+  return (
+    <>
+      <CopyFileButton filePath={screenshot.filePath} />
+      {renaming ? (
+        <ScreenshotRenameInput
+          screenshot={screenshot}
+          inViewer
+          onClose={() => setRenaming(false)}
+        />
+      ) : (
+        <Button size="sm" className="h-10 hover:text-accent" onClick={() => setRenaming(true)}>
+          <PenLine size={20} />
+          Rename
+        </Button>
+      )}
+      <Button
+        size="sm"
+        className="h-10 hover:text-accent"
+        onClick={() => openFileLocation(screenshot.filePath)}
+      >
+        <FolderOpen size={20} />
+        Open File Location
+      </Button>
+      <DeleteMediaButton media={screenshot} />
+    </>
+  );
+}
+
+export type ScreenshotMenuAnchor = 'button' | { x: number; y: number };
+
+interface ScreenshotCardMenuProps {
+  screenshot: Screenshot;
+  anchor: ScreenshotMenuAnchor | null;
+  onOpen: () => void;
+  onClose: () => void;
+  onRename: () => void;
+}
+
+export function ScreenshotCardMenu({
   screenshot,
-  inViewer = false,
-}: ScreenshotActionsProps) {
-  const [open, setOpen] = useState(false);
+  anchor,
+  onOpen,
+  onClose,
+  onRename,
+}: ScreenshotCardMenuProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
   const menuId = useId();
-  const { openModal, closeModal } = useModal();
   const confirmDelete = useDeleteConfirmation();
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const trigger = triggerRef.current;
-    if (!open || !menu || !trigger) return;
+    if (!anchor || !menu || !trigger) return;
 
     const rect = trigger.getBoundingClientRect();
     const gap = 4;
@@ -39,11 +95,13 @@ export default function ScreenshotActions({
     const maxTop = window.innerHeight - menu.offsetHeight - margin;
     const top =
       rect.bottom + gap <= maxTop ? rect.bottom + gap : rect.top - menu.offsetHeight - gap;
-    menu.style.left = `${Math.max(margin, Math.min(maxLeft, rect.right - menu.offsetWidth))}px`;
-    menu.style.top = `${Math.max(margin, Math.min(maxTop, top))}px`;
+    const x = anchor === 'button' ? rect.right - menu.offsetWidth : anchor.x;
+    const y = anchor === 'button' ? top : anchor.y;
+    menu.style.left = `${Math.max(margin, Math.min(maxLeft, x))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(maxTop, y))}px`;
     menu.querySelector('button')?.focus({ preventScroll: true });
 
-    const dismiss = () => setOpen(false);
+    const dismiss = onClose;
     const dismissOutside = (event: Event) => {
       if (
         event.target instanceof Node &&
@@ -74,18 +132,14 @@ export default function ScreenshotActions({
       window.removeEventListener('resize', dismiss);
       window.removeEventListener('blur', dismiss);
     };
-  }, [open]);
+  }, [anchor, onClose]);
 
   const runAction = (action: () => void) => {
-    setOpen(false);
+    onClose();
     triggerRef.current?.focus({ preventScroll: true });
     action();
   };
 
-  const renameScreenshot = () =>
-    openModal(<RenameScreenshotModal screenshot={screenshot} onClose={closeModal} />, {
-      size: 'sm',
-    });
   const showLocation = () => openFileLocation(screenshot.filePath);
   const deleteScreenshot = () =>
     confirmDelete({
@@ -96,23 +150,6 @@ export default function ScreenshotActions({
       },
     });
 
-  if (inViewer) {
-    return (
-      <>
-        <CopyFileButton filePath={screenshot.filePath} />
-        <Button size="sm" className="h-10 hover:text-accent" onClick={renameScreenshot}>
-          <PenLine size={20} />
-          Rename
-        </Button>
-        <Button size="sm" className="h-10 hover:text-accent" onClick={showLocation}>
-          <FolderOpen size={20} />
-          Open File Location
-        </Button>
-        <DeleteMediaButton media={screenshot} />
-      </>
-    );
-  }
-
   return (
     <>
       <button
@@ -121,13 +158,13 @@ export default function ScreenshotActions({
         className="btn btn-ghost btn-sm btn-circle hover:bg-white/10 active:bg-white/10"
         aria-label="Screenshot actions"
         title="Screenshot actions"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((previous) => !previous)}
+        aria-expanded={!!anchor}
+        aria-controls={anchor ? menuId : undefined}
+        onClick={anchor ? onClose : onOpen}
       >
         <Ellipsis size={24} />
       </button>
-      {open &&
+      {anchor &&
         createPortal(
           <ul
             ref={menuRef}
@@ -150,7 +187,7 @@ export default function ScreenshotActions({
               </Button>
             </li>
             <li>
-              <Button variant="menu" onClick={() => runAction(renameScreenshot)}>
+              <Button variant="menu" onClick={() => runAction(onRename)}>
                 <PenLine size={20} />
                 Rename
               </Button>

@@ -24,6 +24,7 @@ import { useAiHighlights } from '../Context/AiHighlightsContext';
 import { useCompression } from '../Context/CompressionContext';
 import { useContentMigration } from '../Context/ContentMigrationContext';
 import Button from './Button';
+import InlineRenameInput from './InlineRenameInput';
 import MatchTooltip from './MatchTooltip';
 import LibraryMediaMetadata from './LibraryMediaMetadata';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
@@ -95,12 +96,10 @@ export default function ContentCard({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
   const [contextMenuPosition, setContextMenuPosition] = useState<{
     x: number;
     y: number;
   } | null>(null);
-  const renameInputRef = useRef<HTMLInputElement>(null);
   const uploadModalSequenceRef = useRef(0);
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -354,26 +353,13 @@ export default function ContentCard({
     });
   };
 
-  const startRenaming = () => {
-    setRenameValue(content!.title || '');
-    setIsRenaming(true);
-    setTimeout(() => {
-      renameInputRef.current?.focus();
-      renameInputRef.current?.select();
-    }, 0);
-  };
-
-  const commitRename = () => {
-    if (!isRenaming) return;
-    setIsRenaming(false);
-    const trimmed = renameValue.trim();
-    if (trimmed === (content!.title || '')) return;
+  const commitRename = (title: string) => {
     sendMessageToBackend('RenameContent', {
       Id: content!.id,
-      Title: trimmed,
+      Title: title,
     });
     // Show the new title immediately; the backend's State push confirms it.
-    patchContent(content!.id, { title: trimmed });
+    patchContent(content!.id, { title });
   };
 
   const handleOpenFileLocation = () => openFileLocation(content!.filePath);
@@ -503,7 +489,7 @@ export default function ContentCard({
           variant="menu"
           onClick={() => {
             closeMenu();
-            startRenaming();
+            setIsRenaming(true);
           }}
         >
           <PenLine size={20} />
@@ -693,24 +679,12 @@ export default function ContentCard({
       <div className="card-body gap-1 pt-2 border border-t-0 border-[#49515b] rounded-b-[inherit]">
         <div className="flex justify-between items-center">
           {isRenaming ? (
-            <input
-              ref={renameInputRef}
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  commitRename();
-                } else if (e.key === 'Escape') {
-                  e.preventDefault();
-                  setIsRenaming(false);
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="card-title !block truncate bg-transparent outline-none w-full"
+            <InlineRenameInput
+              label={`Rename ${type.toLowerCase()}`}
+              initialValue={content!.title || ''}
               placeholder={content!.game || 'Untitled'}
+              onSave={commitRename}
+              onClose={() => setIsRenaming(false)}
             />
           ) : (
             <h2 className="card-title !block truncate">

@@ -1,10 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import LibraryFolderActions from '../Components/LibraryFolderActions';
 import ContentFilters, { ALL_GAMES, matchesGameFilter } from '../Components/ContentFilters';
 import type { SortOption } from '../Components/ContentFilters';
 import LibraryMediaMetadata from '../Components/LibraryMediaMetadata';
-import ScreenshotActions from '../Components/ScreenshotActions';
+import {
+  ScreenshotCardMenu,
+  ScreenshotRenameInput,
+  type ScreenshotMenuAnchor,
+} from '../Components/ScreenshotActions';
 import ScreenshotViewer from '../Components/ScreenshotViewer';
 import { useAppState } from '../Context/AppStateContext';
 import { useScroll } from '../Context/ScrollContext';
@@ -31,6 +35,9 @@ function readPreference(key: string): unknown {
 
 export default function Screenshots({ selectedScreenshot, onSelect }: ScreenshotsProps) {
   const { screenshots } = useAppState();
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ path: string; anchor: ScreenshotMenuAnchor } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const [selectedGame, setSelectedGame] = useState(() => {
     const saved = readPreference('filters');
     return typeof saved === 'string' ? saved : ALL_GAMES;
@@ -134,6 +141,14 @@ export default function Screenshots({ selectedScreenshot, onSelect }: Screenshot
             <article
               key={screenshot.filePath}
               className="card card-compact w-full cursor-pointer bg-base-300 text-gray-300"
+              onContextMenu={(event) => {
+                if (event.target instanceof HTMLInputElement) return;
+                event.preventDefault();
+                setMenu({
+                  path: screenshot.filePath,
+                  anchor: { x: event.clientX, y: event.clientY },
+                });
+              }}
               onClick={() => {
                 setScrollPosition('screenshots', galleryRef.current?.scrollTop ?? 0);
                 onSelect(screenshot);
@@ -156,14 +171,27 @@ export default function Screenshots({ selectedScreenshot, onSelect }: Screenshot
               </figure>
               <div className="card-body gap-1 rounded-b-[inherit] border border-t-0 border-[#49515b] pt-2">
                 <div className="flex items-center justify-between gap-1">
-                  <h2 className="card-title min-w-0 truncate !block" title={screenshot.fileName}>
-                    {screenshot.title}
-                  </h2>
+                  {renamingPath === screenshot.filePath ? (
+                    <ScreenshotRenameInput
+                      screenshot={screenshot}
+                      onClose={() => setRenamingPath(null)}
+                    />
+                  ) : (
+                    <h2 className="card-title min-w-0 truncate !block" title={screenshot.fileName}>
+                      {screenshot.title}
+                    </h2>
+                  )}
                   <div
                     className="relative z-20 shrink-0"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <ScreenshotActions screenshot={screenshot} />
+                    <ScreenshotCardMenu
+                      screenshot={screenshot}
+                      anchor={menu?.path === screenshot.filePath ? menu.anchor : null}
+                      onOpen={() => setMenu({ path: screenshot.filePath, anchor: 'button' })}
+                      onClose={closeMenu}
+                      onRename={() => setRenamingPath(screenshot.filePath)}
+                    />
                   </div>
                 </div>
                 <div className="text-sm text-gray-200">

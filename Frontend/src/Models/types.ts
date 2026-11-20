@@ -86,6 +86,7 @@ export interface ContentFolderUsage {
 }
 
 export interface Screenshot {
+  hasCustomTitle?: boolean;
   selectionId?: string | null;
   mediaId?: string | null; // Older cached screenshots predate this field.
   fileName: string;

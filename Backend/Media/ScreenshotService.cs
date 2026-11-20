@@ -24,6 +24,7 @@ namespace Segra.Backend.Media
         string Title, string? Game, long FileSizeBytes, bool IsImported, string? MediaId)
     {
         public string FileSize => ContentService.FormatFileSize(FileSizeBytes);
+        public bool HasCustomTitle { get; init; }
         public Guid? SelectionId { get; init; }
     }
 
@@ -42,7 +43,7 @@ namespace Segra.Backend.Media
         private const string CapturesFileName = ".captures.json";
         // The key is the current relative path. During a move, keep both paths and the title until the rename commits.
         private sealed record Capture(string? MediaId, string? Game, string? PendingPath = null, string? PendingTitle = null,
-            bool Named = false, bool RenamePending = false);
+            bool Named = false, bool RenamePending = false, bool ResetNamePending = false);
 
         private static string DirectoryPath => Path.Combine(Settings.Instance.ContentFolder, FolderNames.Screenshots);
         internal const string ImportedFolderName = "Imported";
@@ -515,9 +516,11 @@ namespace Segra.Backend.Media
             }
 
             key = FileKey(root, file.FullName);
+            bool hasCustomTitle = capture == null || capture.Named;
             if (titles != null && titles.TryGetValue(key, out string? savedTitle) && !string.IsNullOrWhiteSpace(savedTitle))
             {
                 title = savedTitle;
+                hasCustomTitle = true;
                 if (captures != null && captures.GetValueOrDefault(key)?.PendingPath == null)
                 {
                     try
@@ -533,7 +536,8 @@ namespace Segra.Backend.Media
             }
 
             return new Screenshot(file.Name, file.FullName, file.LastWriteTimeUtc,
-                title, game, file.Length, imported, capture?.MediaId);
+                title, game, file.Length, imported, capture?.MediaId)
+            { HasCustomTitle = hasCustomTitle };
         }
 
         private static string? ReplayStem(string name)
@@ -546,8 +550,9 @@ namespace Segra.Backend.Media
         }
 
         private static void MoveCapture(FileInfo file, string root, string stem, Capture capture,
-            Dictionary<string, Capture> captures, Dictionary<string, string> titles, bool rename = false)
+            Dictionary<string, Capture> captures, Dictionary<string, string> titles, bool? customName = null)
         {
+            bool rename = customName.HasValue;
             string folder = rename ? file.DirectoryName! : GetCaptureFolder(root, capture.Game);
             if (new DirectoryInfo(folder).LinkTarget != null)
                 throw new IOException($"The screenshot folder is a link: {folder}");
@@ -568,7 +573,13 @@ namespace Segra.Backend.Media
                 if (file.FullName != destination) PublishImage(file, destination);
                 return;
             }
-            var pending = capture with { PendingPath = target, PendingTitle = titles.GetValueOrDefault(source), RenamePending = rename };
+            var pending = capture with
+            {
+                PendingPath = target,
+                PendingTitle = titles.GetValueOrDefault(source),
+                RenamePending = rename,
+                ResetNamePending = customName == false
+            };
             // An externally removed capture may once have occupied this free filename.
             captures.Remove(target);
             captures[source] = pending;
@@ -600,7 +611,14 @@ namespace Segra.Backend.Media
 
             captures.Remove(source);
             if (pending.MediaId != null)
-                captures[target] = pending with { PendingPath = null, PendingTitle = null, Named = pending.Named || pending.RenamePending, RenamePending = false };
+                captures[target] = pending with
+                {
+                    PendingPath = null,
+                    PendingTitle = null,
+                    Named = pending.RenamePending ? !pending.ResetNamePending : pending.Named,
+                    RenamePending = false,
+                    ResetNamePending = false
+                };
             WriteMap(root, CapturesFileName, captures);
         }
 
@@ -656,7 +674,7 @@ namespace Segra.Backend.Media
             {
                 // The original is still in place, or was removed externally. Never adopt an occupied target.
                 if (sourceExists && pending.MediaId != null)
-                    captures[source] = pending with { PendingPath = null, PendingTitle = null, RenamePending = false };
+                    captures[source] = pending with { PendingPath = null, PendingTitle = null, RenamePending = false, ResetNamePending = false };
                 else
                     captures.Remove(source);
                 WriteMap(root, CapturesFileName, captures);
@@ -732,6 +750,12 @@ namespace Segra.Backend.Media
         private static void RenameImage(FileInfo file, string root, string title, Capture? capture,
             Dictionary<string, Capture> captures, Dictionary<string, string> titles)
         {
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                string datedName = file.LastWriteTime.ToString(CaptureDateFormat, CultureInfo.InvariantCulture);
+                MoveCapture(file, root, datedName, capture ?? new Capture(null, null), captures, titles, customName: false);
+                return;
+            }
             string stem = ContentService.SanitizeFileName(title).Replace("\\", "").TrimEnd(' ', '.');
             if (stem.EndsWith(file.Extension, StringComparison.OrdinalIgnoreCase))
                 stem = stem[..^file.Extension.Length].TrimEnd(' ', '.');
@@ -739,7 +763,7 @@ namespace Segra.Backend.Media
                 throw new ArgumentException("Enter a valid file name.");
             if (OperatingSystem.IsWindows() && Regex.IsMatch(stem, @"^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 stem = "_" + stem;
-            MoveCapture(file, root, stem, capture ?? new Capture(null, null), captures, titles, rename: true);
+            MoveCapture(file, root, stem, capture ?? new Capture(null, null), captures, titles, customName: true);
         }
 
         internal static async Task DeleteAsync(string path)

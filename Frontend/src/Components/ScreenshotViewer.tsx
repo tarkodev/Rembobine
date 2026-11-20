@@ -11,7 +11,7 @@ import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import OpenFullSessionButton from './OpenFullSessionButton';
 import MediaInfoBar from './MediaInfoBar';
-import ScreenshotActions from './ScreenshotActions';
+import { ScreenshotViewerActions } from './ScreenshotActions';
 
 interface ScreenshotViewerProps {
   screenshot: Screenshot;
@@ -124,7 +124,7 @@ export default function ScreenshotViewer({
             onBack={onBack}
           />
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <ScreenshotActions key={screenshot.filePath} screenshot={screenshot} inViewer />
+            <ScreenshotViewerActions key={screenshot.filePath} screenshot={screenshot} />
           </div>
         </header>
       )}
