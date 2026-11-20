@@ -17,6 +17,10 @@ function parentDirectory(path: string) {
 
 export function resolveScreenshot(screenshots: Screenshot[], selected: Screenshot | null) {
   if (!selected) return undefined;
+  if (selected.selectionId) {
+    const renamed = screenshots.find((item) => item.selectionId === selected.selectionId);
+    if (renamed) return renamed;
+  }
   const mediaId = getScreenshotMediaId(selected);
   const exact = screenshots.find(
     (item) => item.filePath === selected.filePath && getScreenshotMediaId(item) === mediaId,

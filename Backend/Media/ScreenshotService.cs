@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ObsKit.NET;
@@ -22,6 +24,7 @@ namespace Segra.Backend.Media
         string Title, string? Game, long FileSizeBytes, bool IsImported, string? MediaId)
     {
         public string FileSize => ContentService.FormatFileSize(FileSizeBytes);
+        public Guid? SelectionId { get; init; }
     }
 
     internal static class ScreenshotService
@@ -38,7 +41,8 @@ namespace Segra.Backend.Media
         private const string CaptureDateFormat = "yyyy-MM-dd_HH-mm-ss";
         private const string CapturesFileName = ".captures.json";
         // The key is the current relative path. During a move, keep both paths and the title until the rename commits.
-        private sealed record Capture(string MediaId, string? Game, string? PendingPath = null, string? PendingTitle = null);
+        private sealed record Capture(string? MediaId, string? Game, string? PendingPath = null, string? PendingTitle = null,
+            bool Named = false, bool RenamePending = false);
 
         private static string DirectoryPath => Path.Combine(Settings.Instance.ContentFolder, FolderNames.Screenshots);
         internal const string ImportedFolderName = "Imported";
@@ -389,7 +393,9 @@ namespace Segra.Backend.Media
                 throw new IOException($"Could not encode screenshot: {await error}");
         }
 
-        internal static void RefreshLibrary(bool sendToFrontend = true)
+        internal static void RefreshLibrary(bool sendToFrontend = true) => RefreshLibrary(sendToFrontend, null);
+
+        private static void RefreshLibrary(bool sendToFrontend, (string From, string To)? renamed)
         {
             lock (_libraryLock)
             {
@@ -406,7 +412,20 @@ namespace Segra.Backend.Media
                     // For frames captured in the same second, migrate the earliest legacy name first.
                     var files = EnumerateImages(directory).OrderBy(file => file.Name, StringComparer.Ordinal)
                         .ThenBy(file => file.FullName, StringComparer.Ordinal).ToArray();
-                    var screenshots = files.Select(file => ReadScreenshot(file, directory, titles, games, captures, legacyGames))
+                    // Unlinked images have no bookmark ID. Keep their viewer selection across physical renames.
+                    var selections = AppState.Instance.Screenshots.Where(s => s.SelectionId.HasValue)
+                        .ToDictionary(s => s.FilePath, s => s.SelectionId!.Value, StringComparer.FromComparison(PathComparison));
+                    if (renamed is { } move && selections.Remove(move.From, out var selection))
+                        selections[move.To] = selection;
+                    var screenshots = files.Select(file =>
+                    {
+                        string path = file.FullName;
+                        var item = ReadScreenshot(file, directory, titles, games, captures, legacyGames);
+                        return item.MediaId != null ? item : item with
+                        {
+                            SelectionId = selections.TryGetValue(path, out var id) ? id : Guid.NewGuid()
+                        };
+                    })
                         .OrderByDescending(screenshot => screenshot.CreatedAt)
                         .ThenBy(screenshot => screenshot.FileName, StringComparer.Ordinal)
                         .ToArray();
@@ -463,7 +482,7 @@ namespace Segra.Backend.Media
             string key = FileKey(root, file.FullName);
             Capture? capture = imported ? null : captures?.GetValueOrDefault(key);
             string? stem = null;
-            if (!imported && ImageType(file.Name) == "image/png" && _captureName.Match(title) is { Success: true } legacy &&
+            if (!imported && capture?.Named != true && ImageType(file.Name) == "image/png" && _captureName.Match(title) is { Success: true } legacy &&
                 DateTime.TryParseExact(legacy.Groups["date"].Value, "yyyy-MM-dd HH-mm-ss.fff",
                     CultureInfo.InvariantCulture, DateTimeStyles.None, out var taken))
             {
@@ -474,16 +493,20 @@ namespace Segra.Backend.Media
             }
             else if (capture != null && !string.Equals(file.DirectoryName, GetCaptureFolder(root, capture.Game), PathComparison))
             {
-                stem = ReplayStem(file.Name);
+                stem = capture.Named ? title : ReplayStem(file.Name);
             }
 
             if (capture != null)
             {
                 game = capture.Game;
-                title = game ?? "Screenshot";
+                title = capture.Named ? title : game ?? "Screenshot";
                 if (stem != null && captures != null && titles != null && games != null)
                 {
-                    try { MoveCapture(file, root, stem, capture, captures, titles); }
+                    try
+                    {
+                        MoveCapture(file, root, stem, capture, captures, titles);
+                        if (capture.Named) title = Path.GetFileNameWithoutExtension(file.Name);
+                    }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         Log.Warning(ex, "Could not organize screenshot {FileName}", file.Name);
@@ -493,7 +516,21 @@ namespace Segra.Backend.Media
 
             key = FileKey(root, file.FullName);
             if (titles != null && titles.TryGetValue(key, out string? savedTitle) && !string.IsNullOrWhiteSpace(savedTitle))
+            {
                 title = savedTitle;
+                if (captures != null && captures.GetValueOrDefault(key)?.PendingPath == null)
+                {
+                    try
+                    {
+                        RenameImage(file, root, savedTitle, capture, captures, titles);
+                        title = Path.GetFileNameWithoutExtension(file.Name);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                    {
+                        Log.Warning(ex, "Could not apply the saved screenshot title to {FileName}", file.Name);
+                    }
+                }
+            }
 
             return new Screenshot(file.Name, file.FullName, file.LastWriteTimeUtc,
                 title, game, file.Length, imported, capture?.MediaId);
@@ -509,31 +546,40 @@ namespace Segra.Backend.Media
         }
 
         private static void MoveCapture(FileInfo file, string root, string stem, Capture capture,
-            Dictionary<string, Capture> captures, Dictionary<string, string> titles)
+            Dictionary<string, Capture> captures, Dictionary<string, string> titles, bool rename = false)
         {
-            string folder = GetCaptureFolder(root, capture.Game);
+            string folder = rename ? file.DirectoryName! : GetCaptureFolder(root, capture.Game);
             if (new DirectoryInfo(folder).LinkTarget != null)
                 throw new IOException($"The screenshot folder is a link: {folder}");
-            string destination = Path.Combine(folder, stem + ".png");
+            string extension = file.Extension.Equals(".tmp", StringComparison.OrdinalIgnoreCase) ? ".png" : file.Extension;
+            string destination = Path.Combine(folder, stem + extension);
             string target = FileKey(root, destination);
-            for (int i = 2; Path.Exists(destination) || new FileInfo(destination).LinkTarget != null ||
-                captures.GetValueOrDefault(target)?.PendingPath != null; i++)
+            for (int i = rename ? 1 : 2; !string.Equals(destination, file.FullName, PathComparison) &&
+                (Path.Exists(destination) || new FileInfo(destination).LinkTarget != null ||
+                captures.GetValueOrDefault(target)?.PendingPath != null); i++)
             {
-                destination = Path.Combine(folder, FormattableString.Invariant($"{stem} ({i}).png"));
+                destination = Path.Combine(folder, FormattableString.Invariant($"{stem} ({i}){extension}"));
                 target = FileKey(root, destination);
             }
 
             string source = FileKey(root, file.FullName);
-            var pending = capture with { PendingPath = target, PendingTitle = titles.GetValueOrDefault(source) };
+            if (rename && capture.MediaId == null && !titles.ContainsKey(source) && !captures.ContainsKey(target))
+            {
+                if (file.FullName != destination) PublishImage(file, destination);
+                return;
+            }
+            var pending = capture with { PendingPath = target, PendingTitle = titles.GetValueOrDefault(source), RenamePending = rename };
             // An externally removed capture may once have occupied this free filename.
             captures.Remove(target);
             captures[source] = pending;
             WriteMap(root, CapturesFileName, captures);
 
             string oldFolder = file.DirectoryName!;
-            PublishImage(file, destination);
+            if (!string.Equals(file.FullName, destination, StringComparison.Ordinal))
+                PublishImage(file, destination);
             FinishMove(root, source, pending, captures, titles);
-            RemoveEmptyGameFolder(oldFolder, root);
+            if (!string.Equals(oldFolder, folder, PathComparison))
+                RemoveEmptyGameFolder(oldFolder, root);
         }
 
         private static void FinishMove(string root, string source, Capture pending,
@@ -542,7 +588,7 @@ namespace Segra.Backend.Media
             string target = pending.PendingPath!;
             bool titlesChanged = titles.Remove(source, out string? sourceTitle);
             string? title = pending.PendingTitle ?? sourceTitle;
-            if (title != null)
+            if (title != null && !pending.RenamePending)
             {
                 titles[target] = title;
                 titlesChanged = true;
@@ -553,7 +599,8 @@ namespace Segra.Backend.Media
                 WriteMap(root, TitlesFileName, titles);
 
             captures.Remove(source);
-            captures[target] = pending with { PendingPath = null, PendingTitle = null };
+            if (pending.MediaId != null)
+                captures[target] = pending with { PendingPath = null, PendingTitle = null, Named = pending.Named || pending.RenamePending, RenamePending = false };
             WriteMap(root, CapturesFileName, captures);
         }
 
@@ -578,15 +625,25 @@ namespace Segra.Backend.Media
             bool staging = string.Equals(file.DirectoryName, root, PathComparison) && file.Name.Length == 37 &&
                 file.Name.StartsWith('.') && file.Name.EndsWith(".tmp", StringComparison.Ordinal) &&
                 Guid.TryParseExact(file.Name.Substring(1, 32), "N", out _);
-            if (stem == null || file.LinkTarget != null ||
-                (!staging && GetScreenshotContentType(file.FullName, root) != "image/png") ||
-                GetScreenshotContentType(target.FullName, root) != "image/png" ||
+            string? targetType = GetScreenshotContentType(target.FullName, root);
+            if (targetType == null || file.LinkTarget != null)
+                return;
+            if (staging ? stem == null : GetScreenshotContentType(file.FullName, root) != targetType)
+                return;
+            if (pending.RenamePending && !string.Equals(file.DirectoryName, target.DirectoryName, PathComparison))
+                return;
+            if (!pending.RenamePending && ((stem == null && !pending.Named) ||
                 string.Equals(file.Directory!.Name, ImportedFolderName, PathComparison) ||
-                string.Equals(target.Directory!.Name, ImportedFolderName, PathComparison))
+                string.Equals(target.Directory!.Name, ImportedFolderName, PathComparison)))
                 return;
 
             bool sourceExists = FileExistsForRecovery(file.FullName);
-            if (!sourceExists && FileExistsForRecovery(target.FullName) &&
+            if (sourceExists && string.Equals(file.FullName, target.FullName, PathComparison))
+            {
+                if (file.FullName != target.FullName) PublishImage(file, target.FullName);
+                FinishMove(root, source, pending, captures, titles);
+            }
+            else if (!sourceExists && FileExistsForRecovery(target.FullName) &&
                 (!captures.TryGetValue(pending.PendingPath!, out var owner) || owner.MediaId == pending.MediaId))
             {
                 FinishMove(root, source, pending, captures, titles);
@@ -594,12 +651,12 @@ namespace Segra.Backend.Media
                     RemoveEmptyGameFolder(file.DirectoryName!, root);
             }
             else if (sourceExists && staging)
-                MoveCapture(file, root, stem, pending, captures, titles);
+                MoveCapture(file, root, stem!, pending, captures, titles);
             else
             {
                 // The original is still in place, or was removed externally. Never adopt an occupied target.
-                if (sourceExists)
-                    captures[source] = pending with { PendingPath = null, PendingTitle = null };
+                if (sourceExists && pending.MediaId != null)
+                    captures[source] = pending with { PendingPath = null, PendingTitle = null, RenamePending = false };
                 else
                     captures.Remove(source);
                 WriteMap(root, CapturesFileName, captures);
@@ -649,10 +706,6 @@ namespace Segra.Backend.Media
 
         internal static void Rename(string path, string title)
         {
-            title = title.Trim();
-            if (title.Length == 0)
-                throw new ArgumentException("The screenshot title cannot be empty.", nameof(title));
-
             lock (_libraryLock)
             {
                 string directory = Path.GetFullPath(DirectoryPath);
@@ -660,11 +713,33 @@ namespace Segra.Backend.Media
                     throw new FileNotFoundException("The screenshot is no longer in the library.", path);
 
                 var titles = ReadMap<string>(directory, TitlesFileName);
-                RecoverMoves(directory, ReadMap<Capture>(directory, CapturesFileName), titles);
-                titles[FileKey(directory, path)] = title;
-                WriteMap(directory, TitlesFileName, titles);
-                RefreshLibrary();
+                var captures = ReadMap<Capture>(directory, CapturesFileName);
+                RecoverMoves(directory, captures, titles);
+                var file = new FileInfo(path);
+                string oldPath = file.FullName;
+                var capture = captures.GetValueOrDefault(FileKey(directory, oldPath));
+                if (capture?.PendingPath != null)
+                    throw new IOException("The screenshot has a pending move.");
+                // A locked legacy capture may still be using its original filename as its bookmark ID.
+                if (capture == null && AppState.Instance.Screenshots.FirstOrDefault(s =>
+                    string.Equals(s.FilePath, oldPath, PathComparison)) is { MediaId: not null } legacy)
+                    capture = new Capture(legacy.MediaId, legacy.Game);
+                RenameImage(file, directory, title, capture, captures, titles);
+                RefreshLibrary(true, (oldPath, file.FullName));
             }
+        }
+
+        private static void RenameImage(FileInfo file, string root, string title, Capture? capture,
+            Dictionary<string, Capture> captures, Dictionary<string, string> titles)
+        {
+            string stem = ContentService.SanitizeFileName(title).Replace("\\", "").TrimEnd(' ', '.');
+            if (stem.EndsWith(file.Extension, StringComparison.OrdinalIgnoreCase))
+                stem = stem[..^file.Extension.Length].TrimEnd(' ', '.');
+            if (string.IsNullOrWhiteSpace(stem))
+                throw new ArgumentException("Enter a valid file name.");
+            if (OperatingSystem.IsWindows() && Regex.IsMatch(stem, @"^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                stem = "_" + stem;
+            MoveCapture(file, root, stem, capture ?? new Capture(null, null), captures, titles, rename: true);
         }
 
         internal static async Task DeleteAsync(string path)
@@ -739,7 +814,23 @@ namespace Segra.Backend.Media
         {
             if (new DirectoryInfo(directory).LinkTarget != null)
                 throw new IOException($"The screenshot folder is a link: {directory}");
-            string path = Path.Combine(directory, fileName);
+            string cached = Path.Combine(MetadataDirectory(directory), fileName);
+            var result = ReadMapFile<T>(cached);
+            string legacy = Path.Combine(directory, fileName);
+            if (new FileInfo(legacy).LinkTarget != null)
+                throw new IOException($"The screenshot metadata is a link: {legacy}");
+            if (FileExistsForRecovery(legacy))
+            {
+                foreach (var (key, value) in ReadMapFile<T>(legacy))
+                    result.TryAdd(key, value);
+                WriteMap(directory, fileName, result);
+                File.Delete(legacy);
+            }
+            return result;
+        }
+
+        private static Dictionary<string, T> ReadMapFile<T>(string path)
+        {
             var result = new Dictionary<string, T>(StringComparer.FromComparison(PathComparison));
             string json;
             try { json = File.ReadAllText(path); }
@@ -747,14 +838,30 @@ namespace Segra.Backend.Media
             catch (DirectoryNotFoundException) { return result; }
 
             var saved = JsonSerializer.Deserialize<Dictionary<string, T>>(json)
-                ?? throw new JsonException($"Empty screenshot metadata: {fileName}");
+                ?? throw new JsonException($"Empty screenshot metadata: {path}");
             foreach (var (name, value) in saved)
                 result[name] = value ?? throw new JsonException($"Missing screenshot metadata: {name}");
             return result;
         }
 
+        private static string MetadataDirectory(string root)
+        {
+            // Maps contain relative image paths. Keep separate libraries independent when switching content folders.
+            string path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+            if (OperatingSystem.IsWindows()) path = path.ToUpperInvariant();
+            string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path)));
+            return Path.Combine(FolderNames.CacheFolder, FolderNames.Metadata, FolderNames.Screenshots, key);
+        }
+
         private static void WriteMap<T>(string directory, string fileName, Dictionary<string, T> values)
         {
+            directory = MetadataDirectory(directory);
+            if (fileName == TitlesFileName && values.Count == 0)
+            {
+                if (Directory.Exists(directory)) File.Delete(Path.Combine(directory, fileName));
+                return;
+            }
+            Directory.CreateDirectory(directory);
             string tempPath = Path.Combine(directory, $".{Guid.NewGuid():N}.tmp");
             try
             {

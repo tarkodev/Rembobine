@@ -1207,7 +1207,7 @@ namespace Segra.Backend.Media
             }
         }
 
-        private static string SanitizeFileName(string title)
+        internal static string SanitizeFileName(string title)
         {
             var invalidChars = new HashSet<char>(Path.GetInvalidFileNameChars());
             var sb = new System.Text.StringBuilder();

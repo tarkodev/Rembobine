@@ -10,7 +10,8 @@ interface RenameScreenshotModalProps {
 }
 
 export default function RenameScreenshotModal({ screenshot, onClose }: RenameScreenshotModalProps) {
-  const [title, setTitle] = useState(screenshot.title);
+  const fileStem = screenshot.fileName.replace(/\.[^.]+$/, '');
+  const [title, setTitle] = useState(fileStem);
   const inputRef = useRef<HTMLInputElement>(null);
   const newTitle = title.trim();
 
@@ -22,7 +23,7 @@ export default function RenameScreenshotModal({ screenshot, onClose }: RenameScr
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!newTitle) return;
-    if (newTitle !== screenshot.title) {
+    if (newTitle !== fileStem) {
       sendMessageToBackend('RenameScreenshot', { FilePath: screenshot.filePath, Title: newTitle });
     }
     onClose();
@@ -32,7 +33,7 @@ export default function RenameScreenshotModal({ screenshot, onClose }: RenameScr
     <form className="space-y-4" onSubmit={submit}>
       <h2 className="text-lg font-semibold">Rename screenshot</h2>
       <label className="block space-y-1.5">
-        <span className="text-sm">Title</span>
+        <span className="text-sm">File name</span>
         <input
           ref={inputRef}
           className="input w-full bg-base-200"
