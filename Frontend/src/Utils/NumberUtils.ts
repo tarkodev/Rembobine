@@ -15,6 +15,14 @@ export function timeStringToSeconds(timeStr: string): number {
   return ((days * 24 + hours) * 60 + Number(minutes)) * 60 + Number(seconds);
 }
 
+export function formatTime(time: number): string {
+  const totalSeconds = Math.max(0, Math.floor(time));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return hours > 0 ? `${hours}:${minutes}:${seconds}` : `${minutes}:${seconds}`;
+}
+
 export function formatTimecode(seconds: number): string {
   const totalMs = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds * 1000)) : 0;
   const hours = Math.floor(totalMs / 3600000);

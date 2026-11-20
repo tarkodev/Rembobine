@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { consumeEscape } from '../Utils/KeyboardUtils';
 import { Layers, Skull, type LucideIcon } from 'lucide-react';
 import { BookmarkType, type Bookmark } from '../Models/types';
-import { formatTimecode, timeStringToSeconds } from '../Utils/NumberUtils';
+import { formatTime, formatTimecode, timeStringToSeconds } from '../Utils/NumberUtils';
 
 interface BookmarkTrackProps {
   bookmarks: Bookmark[];
@@ -27,6 +27,10 @@ interface MarkerGroup {
   center: number;
   width: number;
   pairIndex?: number;
+}
+
+function markerTimeLabel({ bookmark, time }: Marker) {
+  return bookmark.type === BookmarkType.ScreenshotSaved ? formatTime(time) : formatTimecode(time);
 }
 
 const MARKER_WIDTH = 22;
@@ -213,9 +217,10 @@ export default memo(function BookmarkTrack({
     setHovered(null);
   };
 
-  const markerDescription = ({ bookmark, time, start }: Marker) => {
+  const markerDescription = (marker: Marker) => {
+    const { bookmark, time, start } = marker;
     const name = `${label(bookmark.type)}${bookmark.subtype ? ` · ${bookmark.subtype}` : ''}`;
-    if (start === undefined) return `${name} · ${formatTimecode(time)}`;
+    if (start === undefined) return `${name} · ${markerTimeLabel(marker)}`;
     return `${name} · ${formatTimecode(start)} – ${formatTimecode(time)} (${formatTimecode(time - start)})`;
   };
 
@@ -346,7 +351,7 @@ export default memo(function BookmarkTrack({
                       e.currentTarget.hidden = true;
                     }}
                   />
-                  <span className="block py-1 tabular-nums">{formatTimecode(first.time)}</span>
+                  <span className="block py-1 tabular-nums">{markerTimeLabel(first)}</span>
                 </div>,
                 document.body,
               )}
@@ -412,7 +417,7 @@ export default memo(function BookmarkTrack({
                     {label(bookmark.type)}
                     {bookmark.subtype && ` · ${bookmark.subtype}`}
                   </span>
-                  <span className="tabular-nums text-white/70">{formatTimecode(marker.time)}</span>
+                  <span className="tabular-nums text-white/70">{markerTimeLabel(marker)}</span>
                 </button>
               );
             })}

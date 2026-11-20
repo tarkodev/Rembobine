@@ -7,7 +7,7 @@ import { contentTypeToFolderName, getContentFileUrl } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
 import { consumeEscape } from '../Utils/KeyboardUtils';
-import { timeStringToSeconds } from '../Utils/NumberUtils';
+import { formatTime, timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import type { LinkedMedia } from '../Context/SelectedVideoContext';
 import { DndProvider } from 'react-dnd';
@@ -1377,18 +1377,6 @@ export default function VideoComponent({ video }: { video: Content }) {
     document.body.classList.toggle('dragging-playhead', isDragging);
     return () => document.body.classList.remove('dragging-playhead');
   }, [isDragging]);
-
-  // Format time in seconds to "HH:MM:SS" when needed, otherwise "MM:SS"
-  const formatTime = (time: number) => {
-    const totalSeconds = Math.max(0, Math.floor(time));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return `${hours.toString()}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  };
 
   // Generate major and minor tick marks for the timeline based on zoom level
   const { majorTicks, minorTicks } = useMemo(() => {

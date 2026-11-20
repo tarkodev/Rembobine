@@ -376,10 +376,7 @@ try {
         i === 3 ? "X:/source.mp4" : `X:/${i}.png`,
       );
       if (i === 3) assert.equal(url.searchParams.get("time"), "4.016");
-      assert.equal(
-        await preview.innerText(),
-        i < 2 ? "00:00.000" : times[i].slice(3),
-      );
+      assert.equal(await preview.innerText(), i < 2 ? "00:00" : "00:04");
       const footprint = await marker.evaluate((el) => {
         const rect = el.getBoundingClientRect();
         const track = el.parentElement.getBoundingClientRect();
@@ -418,6 +415,15 @@ try {
     const grouped = page.getByRole("group", { name: "Overlapping bookmarks" });
     await grouped.waitFor();
     assert.equal(await grouped.getByRole("button").count(), 3);
+    const groupedCapture = grouped.getByRole("button").first();
+    assert.equal(
+      await groupedCapture.getAttribute("title"),
+      "Screenshot Saved · 00:12",
+    );
+    assert.equal(
+      await groupedCapture.locator("span").last().innerText(),
+      "00:12",
+    );
     await page.keyboard.press("Escape");
   }
   assert.deepEqual(errors, []);
