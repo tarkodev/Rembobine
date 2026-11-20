@@ -6,6 +6,7 @@ import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
+import { consumeEscape } from '../Utils/KeyboardUtils';
 import { timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import type { LinkedMedia } from '../Context/SelectedVideoContext';
@@ -303,7 +304,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     };
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (consumeEscape(event)) {
         setShowSpeedMenu(false);
         speedButtonRef.current?.blur();
       }
@@ -328,7 +329,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     };
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowAudioTracks(false);
+      if (consumeEscape(event)) setShowAudioTracks(false);
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -652,7 +653,6 @@ export default function VideoComponent({ video }: { video: Content }) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (e.key === 'Escape' && document.querySelector('[data-bookmark-popup]')) return;
       const isTyping =
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
@@ -767,11 +767,6 @@ export default function VideoComponent({ video }: { video: Content }) {
           if (isFullscreen) showControlsTemporarily();
           return;
         }
-      }
-
-      if (e.key === 'Escape' && isFullscreen) {
-        e.preventDefault();
-        exitFullscreen();
       }
     };
 
@@ -1256,10 +1251,26 @@ export default function VideoComponent({ video }: { video: Content }) {
     scheduleControlsHide();
   };
 
-  const exitFullscreen = () => {
+  const exitFullscreen = useCallback(() => {
     setIsFullscreen(false);
     sendMessageToBackend('ToggleFullscreen', { enabled: false });
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (!consumeEscape(event)) return;
+      // The copy and segment dropdowns can also be opened solely by keyboard focus.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && focused.closest('.dropdown:focus-within')) {
+        focused.blur();
+        return;
+      }
+      if (isFullscreen) exitFullscreen();
+      else goBack();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [exitFullscreen, goBack, isFullscreen]);
 
   const toggleFullscreen = () => {
     if (isFullscreen) exitFullscreen();
@@ -1875,7 +1886,12 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (!copyMenuRef.current?.contains(e.target as Node)) setCopyMenuOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setCopyMenuOpen(false);
+      if (consumeEscape(e)) {
+        setCopyMenuOpen(false);
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement && copyMenuRef.current?.contains(focused))
+          focused.blur();
+      }
     };
     document.addEventListener('mousedown', onDocMouseDown);
     document.addEventListener('keydown', onKeyDown);
@@ -1900,7 +1916,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (!segmentOptionsRef.current?.contains(e.target as Node)) setSegmentOptionsOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeSegmentOptions();
+      if (consumeEscape(e)) closeSegmentOptions();
     };
     document.addEventListener('mousedown', onDocMouseDown);
     document.addEventListener('keydown', onKeyDown);

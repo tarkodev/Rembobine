@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef } from 'react';
 import { MorphIcon } from 'morphicons/react';
 import { AudioLines, Headphones, Mic, VolumeX } from 'lucide';
 import type { AudioTrackType } from '../Models/types';
+import { consumeEscape } from '../Utils/KeyboardUtils';
 
 const TRACK_TYPE_ICONS = { mix: AudioLines, input: Mic, output: Headphones };
 
@@ -38,7 +39,7 @@ export default function AudioTrackMixer({
   useEffect(() => {
     if (!onClose) return;
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (consumeEscape(event)) onClose();
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);

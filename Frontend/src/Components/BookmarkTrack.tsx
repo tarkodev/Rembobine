@@ -1,5 +1,6 @@
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { consumeEscape } from '../Utils/KeyboardUtils';
 import { Layers, Skull, type LucideIcon } from 'lucide-react';
 import { BookmarkType, type Bookmark } from '../Models/types';
 import { formatTimecode, timeStringToSeconds } from '../Utils/NumberUtils';
@@ -146,7 +147,7 @@ export default memo(function BookmarkTrack({
         close();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (!consumeEscape(event)) return;
       if (panel.current?.contains(document.activeElement)) expanded.trigger.focus();
       close();
     };

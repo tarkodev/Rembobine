@@ -81,6 +81,7 @@ try {
       "segra.settings.v1",
       JSON.stringify({
         airplaneMode: true,
+        confirmBeforeDeleting: true,
         defaultMenuItem: "Full Sessions",
         clipClearSegmentsAfterCreatingClip: false,
       }),
@@ -204,7 +205,12 @@ try {
   await options.click();
   assert.ok(await page.getByRole("radio", { name: "Separate" }).isChecked());
   await page.getByRole("radio", { name: "Combined" }).check();
-  await options.click();
+  await page.keyboard.press("Escape");
+  assert.equal(await options.getAttribute("aria-expanded"), "false");
+  await button("Clear").click();
+  await page.locator("dialog:modal").waitFor();
+  await page.keyboard.press("Escape");
+  await page.locator("dialog:modal").waitFor({ state: "hidden" });
   await create.click();
   const combined = await lastExport();
   assert.equal(combined.OutputMode, "combined");
@@ -242,8 +248,14 @@ try {
     },
     { session, bookmarks, clip, segments: combined.Segments },
   );
-  await button(`Clip Saved at ${bookmarks[0].time}`).click();
+  const marker = button(`Clip Saved at ${bookmarks[0].time}`);
+  await marker.click();
+  await button("Open Clip").waitFor();
+  await page.keyboard.press("Escape");
+  await button("Open Clip").waitFor({ state: "hidden" });
+  await marker.click();
   assert.equal(await button("View created clip").count(), 0);
+  await seek(4.5);
   await button("Open Clip").click();
   await button("Copy").click();
   assert.ok(
@@ -256,6 +268,33 @@ try {
     ),
   );
 
+  const isPlayingFile = (file) =>
+    page.waitForFunction((file) => {
+      const src = document.querySelector("video")?.currentSrc;
+      return src && new URL(src).searchParams.get("input") === file;
+    }, file);
+  await isPlayingFile("X:/clip.mp4");
+  await player.hover();
+  await button("Enter Fullscreen").click();
+  const speed = button("Change playback speed");
+  await speed.click();
+  await page.keyboard.press("Escape");
+  assert.equal(await speed.getAttribute("aria-expanded"), "false");
+  await button("Exit Fullscreen").waitFor();
+  await page.keyboard.down("Escape");
+  await button("Enter Fullscreen").waitFor();
+  await page.keyboard.down("Escape"); // A held key must not also leave the clip.
+  await page.keyboard.up("Escape");
+  await isPlayingFile("X:/clip.mp4");
+  await page.keyboard.press("Escape");
+  await isPlayingFile("X:/source.mp4");
+  await page.waitForFunction(() => {
+    const video = document.querySelector("video");
+    return video.paused && Math.abs(video.currentTime - 4.5) < 0.05;
+  });
+  await page.keyboard.press("Escape");
+  await page.locator('[data-content-id="session"]').waitFor();
+
   // A previously selected combined output must survive a fresh player instance.
   await page.reload();
   await page.locator('[data-content-id="session"]').click();
@@ -263,7 +302,7 @@ try {
   assert.ok(await page.getByRole("radio", { name: "Combined" }).isChecked());
   assert.deepEqual(errors, []);
   console.log(
-    "Classic clip editor passed: Add Segment, drag to trim, separate and combined output, saved output preference, Open Clip and Copy.",
+    "Classic clip editor passed, including Escape in menus, a dialog, fullscreen and linked media.",
   );
 } finally {
   await browser?.close();

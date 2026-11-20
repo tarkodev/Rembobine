@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { consumeEscape } from '../Utils/KeyboardUtils';
 import { ArrowUpRight } from 'lucide-react';
 import Button from './Button';
 
@@ -25,8 +26,7 @@ export default function BookmarkMediaMenu({
       if (event.target instanceof Node && !menuRef.current?.contains(event.target)) onClose();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
+      if (!consumeEscape(event)) return;
       event.stopPropagation();
       onClose();
       trigger.focus();

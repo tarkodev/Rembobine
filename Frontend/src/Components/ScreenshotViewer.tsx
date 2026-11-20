@@ -3,6 +3,7 @@ import { Maximize, Minimize, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'luci
 import { useAppState } from '../Context/AppStateContext';
 import { useSettings } from '../Context/SettingsContext';
 import { getContentGameIcon } from '../Utils/GameIconUtils';
+import { consumeEscape } from '../Utils/KeyboardUtils';
 import { useModal } from '../Context/ModalContext';
 import { MAX_SCREENSHOT_ZOOM, useScreenshotViewport } from '../Hooks/useScreenshotViewport';
 import { BookmarkType, type Screenshot } from '../Models/types';
@@ -97,6 +98,7 @@ export default function ScreenshotViewer({
           toggleFullscreen();
           break;
         case 'Escape':
+          if (!consumeEscape(event)) return;
           if (isFullscreen) toggleFullscreen();
           else onBack();
           break;
