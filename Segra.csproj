@@ -133,7 +133,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\**" Exclude="Resources\wwwroot\**" />
-    <FrontendSourceFiles Include="Frontend\src\**\*;Frontend\public\**\*;Frontend\index.html;Frontend\package.json;Frontend\package-lock.json;Frontend\vite.config.*;Frontend\tsconfig*.json" />
+    <FrontendSourceFiles Include="icon.svg;Frontend\src\**\*;Frontend\public\**\*;Frontend\index.html;Frontend\package.json;Frontend\package-lock.json;Frontend\vite.config.*;Frontend\tsconfig*.json" />
   </ItemGroup>
 
   <ItemGroup>
