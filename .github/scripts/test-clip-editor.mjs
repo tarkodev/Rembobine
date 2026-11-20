@@ -552,6 +552,23 @@ try {
     ),
     "All 80 coincident markers must have independent hit targets",
   );
+  assert.ok(
+    await ticks.evaluate((ruler) => {
+      const label = ruler.querySelector(":scope > div > span.absolute.text-xs");
+      const icons = [
+        ...ruler.querySelectorAll("button[data-bookmark-control]"),
+      ];
+      return (
+        label &&
+        icons.every(
+          (icon) =>
+            label.getBoundingClientRect().bottom <=
+            icon.getBoundingClientRect().top,
+        )
+      );
+    }),
+    "Tick labels must stay above every row of icons",
+  );
   await page.evaluate(
     (source) =>
       window.dispatchEvent(

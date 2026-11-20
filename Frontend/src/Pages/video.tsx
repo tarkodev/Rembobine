@@ -2804,12 +2804,14 @@ export default function VideoComponent({ video }: { video: Content }) {
                 return (
                   <div
                     key={`major-${tickTime}`}
-                    className="absolute bottom-0 text-center text-white -translate-x-1/2 select-none whitespace-nowrap"
+                    className="absolute inset-y-0 flex flex-col justify-end text-center text-white -translate-x-1/2 select-none whitespace-nowrap"
                     style={{
                       left: `${leftPos}px`,
                     }}
                   >
-                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 text-xs mb-[3px]">
+                    <span
+                      className={`absolute left-1/2 -translate-x-1/2 text-xs ${bookmarksReady && filteredBookmarks.length ? 'top-0' : 'bottom-[13px]'}`}
+                    >
                       {formatTime(tickTime)}
                     </span>
                     <div className="w-[2px] h-[10px] bg-white mx-auto" />

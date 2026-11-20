@@ -158,7 +158,7 @@ export default memo(function BookmarkTrack({
     <div
       ref={track}
       className={`z-20 pointer-events-none ${fullscreen ? 'absolute inset-x-[6px] bottom-[calc(50%+2px)]' : 'relative w-full'}`}
-      style={{ height: (fullscreen ? 31 : 42) + (rows - 1) * MARKER_PITCH }}
+      style={{ height: (fullscreen ? 31 : markers.length ? 52 : 42) + (rows - 1) * MARKER_PITCH }}
     >
       {markers.map(({ bookmark, start, time }) =>
         start === undefined ? null : (
