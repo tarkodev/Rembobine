@@ -26,7 +26,7 @@ namespace Segra.Backend.Windows.Input.HotkeyBroker
         public static int RequestInstall()
         {
             string exePath = Environment.ProcessPath
-                ?? throw new InvalidOperationException("Could not resolve the Segra executable path.");
+                ?? throw new InvalidOperationException("Could not resolve the Rembobine executable path.");
 
             using var process = Process.Start(new ProcessStartInfo
             {
@@ -42,7 +42,7 @@ namespace Segra.Backend.Windows.Input.HotkeyBroker
 
         public static string DescribeExitCode(int exitCode) => exitCode switch
         {
-            ExitBundledMissing => "The helper is missing from this Segra install. Reinstalling Segra restores it.",
+            ExitBundledMissing => "The helper is missing from this Rembobine install. Reinstalling Rembobine restores it.",
             ExitSignatureRejected => "The helper failed the signature check, so it was not installed.",
             ExitFileOperationFailed => "Windows refused to change the helper in Program Files. Close Segra.Hotkeys.exe and try again.",
             _ => $"The helper exited with code {exitCode}.",

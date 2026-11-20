@@ -4,12 +4,12 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-only</project_license>
 
-  <name>Segra</name>
+  <name>Rembobine</name>
   <summary>Record and clip your games</summary>
 
   <description>
     <p>
-      Segra records your games and lets you clip and share them. It captures with OBS
+      Rembobine records your games and lets you clip and share them. It captures with OBS
       (libobs) using hardware encoders (NVENC on NVIDIA and VAAPI on AMD/Intel) and includes a replay
       buffer, automatic game detection, and a built-in clip editor.
     </p>
@@ -30,8 +30,8 @@
     <keyword>replay</keyword>
   </keywords>
 
-  <url type="homepage">https://segra.tv</url>
-  <url type="bugtracker">https://github.com/Segergren/Segra/issues</url>
+  <url type="homepage">https://github.com/tarkodev/Rembobine</url>
+  <url type="bugtracker">https://github.com/tarkodev/Rembobine/issues</url>
 
   <developer id="tv.segra">
     <name>Segergren</name>

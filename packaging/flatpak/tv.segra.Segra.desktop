@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Segra
+Name=Rembobine
 GenericName=Game Recorder
 Comment=Record and clip your games
 Exec=segra %U

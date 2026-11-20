@@ -24,7 +24,7 @@ namespace Segra.Backend.Platform.Windows
                 using var icon = new NotifyIcon
                 {
                     Icon = Properties.Resources.icon,
-                    Text = "Segrabi",
+                    Text = "Rembobine",
                     Visible = true
                 };
 

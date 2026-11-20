@@ -1,4 +1,4 @@
-# Contributing to Segra
+# Contributing to Rembobine
 
 A quick, practical guide to get you developing on both the backend (C#/.NET) and the frontend (React/Vite).
 
@@ -26,7 +26,7 @@ Use `./build-local.sh` and pick **Windows** or **Linux** with the Up/Down arrows
 for quick local dev (launch `publish/run.sh`).
 
 The Linux **distributable is a Flatpak**, one artifact for every distro, with OBS bundled inside. Build
-it with `./build-flatpak.sh` (needs `flatpak` + `flatpak-builder`); it produces `output/Segra.flatpak`.
+it with `./build-flatpak.sh` (needs `flatpak` + `flatpak-builder`); it produces `output/Rembobine.flatpak`.
 Windows still ships via Velopack (`vpk`).
 
 A `linux-x64` dev build can be cross-compiled from Windows, but running/recording needs a Linux host with:
@@ -38,7 +38,7 @@ and the PipeWire portal source on Wayland.
 
 ### Linux packaging (Flatpak)
 The Flatpak (`packaging/flatpak/tv.segra.Segra.yml`) targets the GNOME 47 runtime and bundles the app
-plus the OBS recorder (`lib/` + `obs-plugins/` + `data/` + the two helpers) next to the `Segra` binary at
+plus the OBS recorder (`lib/` + `obs-plugins/` + `data/` + the two helpers) next to the `Rembobine` binary at
 `/app/segra`. A launcher (`packaging/flatpak/segra.sh`) exports `SEGRA_OBS_*` + `LD_LIBRARY_PATH`, which
 makes `LinuxObsRuntime` resolve the bundled OBS with no download and no re-exec. FFmpeg comes from the
 `org.freedesktop.Platform.ffmpeg-full` runtime extension.
@@ -49,7 +49,7 @@ Ubuntu-24.04 `.deb`** on GitHub releases. The 24.04 base is deliberate: OBS buil
 `libavcodec.so.62` and would not `dlopen`. The same script refreshes
 `packaging/linux/obs-helpers/{obs-nvenc-test,obs-ffmpeg-mux}`. libobs resolves these next to the
 **running executable** (`readlink /proc/self/exe` → `dirname`), so `build-flatpak.sh` places them beside
-`Segra`. Without `obs-nvenc-test`, NVENC is reported unsupported; without `obs-ffmpeg-mux`, recordings and
+`Rembobine`. Without `obs-nvenc-test`, NVENC is reported unsupported; without `obs-ffmpeg-mux`, recordings and
 replay saves never mux to disk.
 
 > Note: the app still contains the older runtime-download path (`CheckIfExistsOrDownloadAsync`) and

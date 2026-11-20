@@ -81,7 +81,7 @@ namespace Segra.Backend.Auth
             if (!accepted)
             {
                 Log.Warning("Discord login callback rejected: no matching pending login");
-                await RespondAsync(context, "Sign-in link expired", "Head back to Segra and start the Discord sign-in again.");
+                await RespondAsync(context, "Sign-in link expired", "Head back to Rembobine and start the Discord sign-in again.");
                 return;
             }
 
@@ -100,7 +100,7 @@ namespace Segra.Backend.Auth
                 accessToken,
                 refreshToken
             });
-            await RespondAsync(context, "You're signed in", "You can close this tab and return to Segra.");
+            await RespondAsync(context, "You're signed in", "You can close this tab and return to Rembobine.");
 
             Program.BringWindowToFront();
         }
@@ -146,7 +146,7 @@ namespace Segra.Backend.Auth
                 <head>
                   <meta charset="utf-8">
                   <meta name="viewport" content="width=device-width, initial-scale=1">
-                  <title>{{safeTitle}} - Segra</title>
+                  <title>{{safeTitle}} - Rembobine</title>
                   <style>
                     html, body { height: 100%; margin: 0; }
                     body {

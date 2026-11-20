@@ -55,7 +55,7 @@ modules:
       # App payload (Segra + .NET runtime + wwwroot + OBS lib/obs-plugins/data + the two helpers)
       - install -d /app/segra
       - cp -a payload/. /app/segra/
-      - chmod +x /app/segra/Segra /app/segra/obs-nvenc-test /app/segra/obs-ffmpeg-mux /app/segra/ffmpeg
+      - chmod +x /app/segra/Rembobine /app/segra/obs-nvenc-test /app/segra/obs-ffmpeg-mux /app/segra/ffmpeg
       # Launcher on PATH as `segra` (the manifest command)
       - install -Dm755 segra.sh /app/bin/segra
       # Desktop integration
@@ -64,7 +64,7 @@ modules:
       - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/tv.segra.Segra.png
     sources:
       - type: archive
-        url: https://github.com/Segergren/Segra/releases/download/v1.7.0/segra-1.7.0-x86_64.tar.gz
+        url: https://github.com/tarkodev/Rembobine/releases/download/v1.7.0/segra-1.7.0-x86_64.tar.gz
         # Placeholder until the first release build; the checker maintains it after that.
         sha256: 0000000000000000000000000000000000000000000000000000000000000000
         # The tarball is the staged tree itself (payload/, segra.sh, .desktop, .metainfo.xml, icon).
@@ -72,6 +72,6 @@ modules:
         # external-data-checker watches our latest non-prerelease GitHub release and PRs url + sha256 bumps.
         x-checker-data:
           type: json
-          url: https://api.github.com/repos/Segergren/Segra/releases/latest
+          url: https://api.github.com/repos/tarkodev/Rembobine/releases/latest
           version-query: .tag_name | sub("^v"; "")
           url-query: .assets[] | select(.name | endswith("-x86_64.tar.gz")) | .browser_download_url

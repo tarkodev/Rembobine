@@ -5,46 +5,55 @@ namespace Segra.Backend.App
 {
     internal static class StartupService
     {
-        private const string StartupShortcutName = "Segrabi.lnk";
+        private static readonly string StartupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+        private static readonly string ShortcutPath = Path.Combine(StartupFolder, "Rembobine.lnk");
+        private static readonly string LegacyShortcutPath = Path.Combine(StartupFolder, "Segrabi.lnk");
+        private static readonly string ExecutablePath = Path.ChangeExtension(Assembly.GetExecutingAssembly().Location, ".exe");
+
+        private static dynamic OpenShortcut(string path)
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell")!;
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            return shell.CreateShortcut(path);
+        }
+
+        private static bool HasLegacyShortcut()
+        {
+            if (!File.Exists(LegacyShortcutPath))
+                return false;
+
+            string target = OpenShortcut(LegacyShortcutPath).TargetPath;
+            string legacyExe = Path.Combine(AppContext.BaseDirectory, "Segrabi.exe");
+            // Velopack can retarget the old link before the application gets to rename it.
+            return string.Equals(target, legacyExe, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(target, ExecutablePath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void WriteShortcut()
+        {
+            dynamic shortcut = OpenShortcut(ShortcutPath);
+            shortcut.TargetPath = ExecutablePath;
+            shortcut.Arguments = "--from-startup";
+            shortcut.WorkingDirectory = AppContext.BaseDirectory;
+            shortcut.IconLocation = ExecutablePath + ",0";
+            shortcut.Save();
+        }
 
         public static void SetStartupStatus(bool enable)
         {
             try
             {
-                string exePath = Path.ChangeExtension(Assembly.GetExecutingAssembly().Location, ".exe");
-                if (exePath == null)
-                {
-                    Log.Error("Failed to get executable path");
-                    return;
-                }
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string linkPath = Path.Combine(startupFolder, StartupShortcutName);
-                if (enable && !File.Exists(linkPath))
-                {
-                    Type shellType = Type.GetTypeFromProgID("WScript.Shell")!;
-                    object shell = Activator.CreateInstance(shellType)!;
-                    object shortcut = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { linkPath })!;
-                    shortcut.GetType().InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { exePath });
-                    shortcut.GetType().InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut, new object[] { "--from-startup" });
-                    string? workingDir = Path.GetDirectoryName(exePath);
-                    if (workingDir == null)
-                    {
-                        Log.Error("Failed to get working directory");
-                        return;
-                    }
-                    shortcut.GetType().InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { workingDir });
-                    shortcut.GetType().InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
-                    Log.Information("Added Segra to startup");
-                }
-                else if (!enable && File.Exists(linkPath))
-                {
-                    File.Delete(linkPath);
-                    Log.Information("Removed Segra from startup");
-                }
+                if (enable)
+                    WriteShortcut();
+                else
+                    File.Delete(ShortcutPath);
+
+                if (HasLegacyShortcut())
+                    File.Delete(LegacyShortcutPath);
             }
             catch (Exception ex)
             {
-                Log.Error(ex.Message);
+                Log.Error(ex, "Could not update the Rembobine startup shortcut");
             }
         }
 
@@ -52,13 +61,18 @@ namespace Segra.Backend.App
         {
             try
             {
-                string linkPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), StartupShortcutName);
-                return File.Exists(linkPath);
+                if (HasLegacyShortcut())
+                {
+                    // Publish the new shortcut before retiring the previous launch target.
+                    WriteShortcut();
+                    File.Delete(LegacyShortcutPath);
+                }
+                return File.Exists(ShortcutPath);
             }
             catch (Exception ex)
             {
-                Log.Error(ex.Message);
-                return false;
+                Log.Error(ex, "Could not read the Rembobine startup shortcut");
+                return File.Exists(ShortcutPath) || File.Exists(LegacyShortcutPath);
             }
         }
     }

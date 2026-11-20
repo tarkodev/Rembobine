@@ -1463,7 +1463,7 @@ namespace Segra.Backend.Core.Models
         // video never has to move them and titles can't collide across game folders.
         public string Id { get; set; } = string.Empty;
 
-        // Sampled from the encoded media, so Explorer moves can be matched even while Segrabi is closed.
+        // Sampled from the encoded media, so Explorer moves can be matched even while Rembobine is closed.
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? LibraryFileIdentity { get; set; }
 

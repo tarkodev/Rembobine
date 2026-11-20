@@ -36,7 +36,7 @@ const MigrationOverlay: React.FC = () => {
         <div className="mb-6">
           <span className="loading loading-spinner loading-lg text-primary"></span>
         </div>
-        <h2 className="text-2xl font-bold mb-4">Updating Segra</h2>
+        <h2 className="text-2xl font-bold mb-4">Updating Rembobine</h2>
         <p className="text-base-content/70 mb-6">Preparing your content for the new version.</p>
         {stepCount > 1 && (
           <p className="text-sm text-base-content/70 mb-3">

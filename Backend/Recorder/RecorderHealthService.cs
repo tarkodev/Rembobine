@@ -73,7 +73,7 @@ namespace Segra.Backend.Recorder
                 {
                     await MessageService.ShowModal(
                         "Recorder needs a restart",
-                        "The recorder stopped working, usually because the graphics driver was reset. Segra will restart now to recover.",
+                        "The recorder stopped working, usually because the graphics driver was reset. Rembobine will restart now to recover.",
                         "error");
                     OBSService.PlaySound("error");
 

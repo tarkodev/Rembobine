@@ -21,4 +21,4 @@ if [ -z "$TZ" ] && [ "$(date +%Z)" = "UTC" ]; then
     fi
 fi
 
-exec /app/segra/Segra "$@"
+exec /app/segra/Rembobine "$@"

@@ -3,11 +3,11 @@
     "configurations": [
 
         {
-            "name": "Segra (Linux)",
+            "name": "Rembobine (Linux)",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build (linux)",
-            "program": "${workspaceFolder}/bin/Debug/net10.0/Segra",
+            "program": "${workspaceFolder}/bin/Debug/net10.0/Rembobine",
             "args": [],
             "cwd": "${workspaceFolder}/bin/Debug/net10.0",
             "console": "internalConsole",
@@ -30,7 +30,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/bin/Debug/net10.0-windows10.0.19041.0/Segra.exe",
+            "program": "${workspaceFolder}/bin/Debug/net10.0-windows10.0.19041.0/Rembobine.exe",
             "args": [],
             "cwd": "${workspaceFolder}/bin/Debug/net10.0-windows10.0.19041.0",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console

@@ -1,5 +1,5 @@
 #Requires -Version 7.6
-# Run in an interactive Windows session with the path to a published Segrabi.dll.
+# Run in an interactive Windows session with the path to a published Rembobine.dll.
 param([Parameter(Mandatory)][string]$AssemblyPath)
 
 $ErrorActionPreference = 'Stop'
@@ -7,7 +7,7 @@ $assembly = [Reflection.Assembly]::LoadFrom((Resolve-Path -LiteralPath $Assembly
 $type = $assembly.GetType('Segra.Backend.Platform.Windows.WindowsNativeDialogs', $true)
 $dialogs = [Activator]::CreateInstance($type)
 $shell = New-Object -ComObject Shell.Application
-$folder = [IO.Directory]::CreateTempSubdirectory('Segrabi Explorer ').FullName
+$folder = [IO.Directory]::CreateTempSubdirectory('Rembobine Explorer ').FullName
 $first = Join-Path $folder 'first clip.mp4'
 $second = Join-Path $folder 'deuxième, clip.mp4'
 

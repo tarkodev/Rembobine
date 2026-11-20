@@ -71,7 +71,9 @@ export default function HevcExtensionWarning({
         />
         <div>
           <p className="font-semibold text-base-content">
-            {status === 'installed' ? 'Restart Segra to play this video' : "This video can't play"}
+            {status === 'installed'
+              ? 'Restart Rembobine to play this video'
+              : "This video can't play"}
           </p>
           <p className="text-sm text-base-content/60 mt-1">
             {status === 'installed'
@@ -97,8 +99,8 @@ export default function HevcExtensionWarning({
       />
       <span className="min-w-0 flex-1">
         {status === 'installed'
-          ? 'The HEVC Video Extension is installed. Restart Segra to play H.265 videos.'
-          : "H.265 videos need Microsoft's HEVC Video Extension to play in Segra."}
+          ? 'The HEVC Video Extension is installed. Restart Rembobine to play H.265 videos.'
+          : "H.265 videos need Microsoft's HEVC Video Extension to play in Rembobine."}
       </span>
       {actionButton}
     </div>

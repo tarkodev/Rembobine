@@ -38,12 +38,12 @@ namespace Segra.Backend.Platform.Windows
                 if (target.WaitForExit(60_000))
                     return 0;
 
-                Console.Error.WriteLine("Segrabi is still running after 60 seconds.");
+                Console.Error.WriteLine("Rembobine is still running after 60 seconds.");
                 return 1;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Could not confirm that Segrabi exited: {ex.Message}");
+                Console.Error.WriteLine($"Could not confirm that Rembobine exited: {ex.Message}");
                 return 1;
             }
         }
@@ -66,7 +66,7 @@ namespace Segra.Backend.Platform.Windows
                 }
                 catch (Exception ex)
                 {
-                    Log.Warning(ex, "Could not handle the Segrabi quit command");
+                    Log.Warning(ex, "Could not handle the Rembobine quit command");
                     await Task.Delay(250);
                 }
             }

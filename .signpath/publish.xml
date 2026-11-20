@@ -2,16 +2,16 @@
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <!--
     Pass 1: signs the main application binaries before Velopack packs them into
-    the installer and update nupkg. Segra.exe is the native apphost; Segra.dll
+    the installer and update nupkg. Rembobine.exe is the native apphost; Rembobine.dll
     is the managed assembly that carries the actual application code. Both are
     signed. Self-contained publish output also contains hundreds of
     Microsoft-signed runtime DLLs, which are excluded.
   -->
   <zip-file>
-    <pe-file path="Segra.exe">
+    <pe-file path="Rembobine.exe">
       <authenticode-sign />
     </pe-file>
-    <pe-file path="Segra.dll">
+    <pe-file path="Rembobine.dll">
       <authenticode-sign />
     </pe-file>
     <!-- The UIAccess broker must be signed: Windows enforces a PKI signature check on any

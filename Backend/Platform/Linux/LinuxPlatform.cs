@@ -301,7 +301,7 @@ namespace Segra.Backend.Platform.Linux
                     string contents =
                         "[Desktop Entry]\n" +
                         "Type=Application\n" +
-                        "Name=Segra\n" +
+                        "Name=Rembobine\n" +
                         $"Exec={exec}\n" +
                         "X-GNOME-Autostart-enabled=true\n" +
                         "Terminal=false\n";

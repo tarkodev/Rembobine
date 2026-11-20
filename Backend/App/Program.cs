@@ -162,6 +162,9 @@ namespace Segra.Backend.App
             ConfigureLogging();
 
             VelopackApp.Build()
+#if WINDOWS
+                .SetAppUserModelId("tarkodev.Rembobine")
+#endif
                 .OnBeforeUpdateFastCallback((v) =>
                 {
                     if (UpdateService.UpdateManager == null)
@@ -195,7 +198,7 @@ namespace Segra.Backend.App
                 })
                 .OnFirstRun((v) =>
                 {
-                    Log.Information($"First run of Segra {v}");
+                    Log.Information($"First run of Rembobine {v}");
                 })
                 .Run();
 
@@ -305,7 +308,7 @@ namespace Segra.Backend.App
                         SettingsService.SaveSettings();
                         _ = Task.Run(() => MessageService.ShowModal(
                             "Recording folder unavailable",
-                            $"The recording folder '{unreachableFolder}' could not be accessed. Segra will use '{Settings.Instance.ContentFolder}' instead. You can change it in Settings.",
+                            $"The recording folder '{unreachableFolder}' could not be accessed. Rembobine will use '{Settings.Instance.ContentFolder}' instead. You can change it in Settings.",
                             "warning"));
                     }
                 }
@@ -325,7 +328,7 @@ namespace Segra.Backend.App
                         SettingsService.SaveSettings();
                         _ = Task.Run(() => MessageService.ShowModal(
                             "Cache folder unavailable",
-                            $"The cache folder '{unreachableCacheFolder}' could not be accessed. Segra will use '{Settings.Instance.CacheFolder}' instead. You can change it in Settings.",
+                            $"The cache folder '{unreachableCacheFolder}' could not be accessed. Rembobine will use '{Settings.Instance.CacheFolder}' instead. You can change it in Settings.",
                             "warning"));
                     }
                 }
@@ -552,7 +555,7 @@ namespace Segra.Backend.App
             if (Interlocked.Exchange(ref _restarting, 1) == 1)
                 return;
 
-            Log.Information($"Restarting Segra: {reason}");
+            Log.Information($"Restarting Rembobine: {reason}");
             if (!LaunchSuccessor(minimized))
             {
                 Interlocked.Exchange(ref _restarting, 0);
@@ -568,7 +571,7 @@ namespace Segra.Backend.App
         // For libobs's crash handler: the process is already dying on the crashing thread, so no shutdown and no libobs calls.
         public static void ExitAfterCrash(string reason, bool minimized)
         {
-            Log.Fatal($"Fatal recorder error, relaunching Segra: {reason}");
+            Log.Fatal($"Fatal recorder error, relaunching Rembobine: {reason}");
             if (Interlocked.Exchange(ref _restarting, 1) == 0)
                 LaunchSuccessor(minimized);
 
@@ -901,7 +904,7 @@ namespace Segra.Backend.App
                 })
                 .Load(appUrl!);
 
-            Window.SetTitle("Segrabi");
+            Window.SetTitle("Rembobine");
 
             // Track the last normal (not maximized/minimized) bounds so SaveWindowState can persist
             // a sensible restore size even when the window is closed while maximized. The move/size

@@ -276,7 +276,7 @@ namespace Segra.Backend.Recorder
             catch (Exception ex)
             {
                 Log.Warning(ex, "Could not capture a screenshot for {Game}", recording.Game);
-                _ = ShowModal("Screenshot failed", "Segrabi could not save a screenshot of the game. Check the log for more details.", "error");
+                _ = ShowModal("Screenshot failed", "Rembobine could not save a screenshot of the game. Check the log for more details.", "error");
             }
             finally
             {
@@ -758,15 +758,15 @@ namespace Segra.Backend.Recorder
                 await MessageService.ShowModal(
                     "Recorder Error",
                     hookInUse
-                        ? "The recorder could not be updated because a game is still using the old capture hook. Please close all games, then restart Segra."
-                        : "The recorder installation failed. Please check your internet connection and try again. If you have any games running, please close them and restart Segra.",
+                        ? "The recorder could not be updated because a game is still using the old capture hook. Please close all games, then restart Rembobine."
+                        : "The recorder installation failed. Please check your internet connection and try again. If you have any games running, please close them and restart Rembobine.",
                     "error",
-                    hookInUse ? "Close your game and restart Segra" : "Could not install recorder"
+                    hookInUse ? "Close your game and restart Rembobine" : "Could not install recorder"
                 );
 #else
                 await MessageService.ShowModal(
                     "Recorder not found",
-                    "Segra's Linux recorder needs OBS Studio's libraries (libobs). Install OBS with your package manager, for example:\n\n    sudo apt install obs-studio\n\nThen restart Segra.",
+                    "Segra's Linux recorder needs OBS Studio's libraries (libobs). Install OBS with your package manager, for example:\n\n    sudo apt install obs-studio\n\nThen restart Rembobine.",
                     "error",
                     "OBS Studio not found"
                 );
@@ -3042,7 +3042,7 @@ namespace Segra.Backend.Recorder
             if (Has("recording helper process"))
             {
                 return ("Recording stopped: helper process blocked",
-                    "The recording helper process could not run. It may have been blocked or removed by antivirus or security software. Add Segra to your antivirus exclusions and try again.");
+                    "The recording helper process could not run. It may have been blocked or removed by antivirus or security software. Add Rembobine to your antivirus exclusions and try again.");
             }
 
             // Cannot write to the recording folder: "Unable to write to %1", "Couldn't open '<path>', Permission denied"
@@ -3050,7 +3050,7 @@ namespace Segra.Backend.Recorder
                 Has("Permission denied") || Has("Access is denied"))
             {
                 return ("Recording stopped: cannot write to folder",
-                    "Segra could not write the recording to your selected folder. Make sure the folder still exists and that your account is allowed to write to it.");
+                    "Rembobine could not write the recording to your selected folder. Make sure the folder still exists and that your account is allowed to write to it.");
             }
 
             // Encoder failure: NVENC / CUDA / codec errors (obs-nvenc sets these on the encoder)
@@ -4213,7 +4213,7 @@ namespace Segra.Backend.Recorder
             // its waiter doesn't sit out the backstop. If OBS still completes the file during
             // disposal, the orphaned-file recovery scan picks it up. Disposing the output also
             // joins any in-flight mux thread, so nothing stays unresolved on the OBS side.
-            FailActiveReplaySave("The recording stopped before the replay finished saving. If the file completed, it can be recovered when Segra restarts.");
+            FailActiveReplaySave("The recording stopped before the replay finished saving. If the file completed, it can be recovered when Rembobine restarts.");
             lock (_replaySaveLock)
                 _previousSaveIndeterminate = false;
 
@@ -4370,7 +4370,7 @@ namespace Segra.Backend.Recorder
                 Settings.Instance.PendingOBSUpdate = true;
                 SettingsService.SaveSettings();
                 await UpdateService.ForceReinstallCurrentVersionAsync();
-                await ShowModal("OBS Update", "Please restart Segra to apply the update.");
+                await ShowModal("OBS Update", "Please restart Rembobine to apply the update.");
                 return;
             }
 
@@ -4718,7 +4718,7 @@ namespace Segra.Backend.Recorder
                     Log.Information($"Codec '{codec.FriendlyName}' is no longer available, switched to '{Settings.Instance.Codec?.FriendlyName}'");
                     _ = Task.Run(() => MessageService.ShowModal(
                         "Codec changed",
-                        $"The codec {codec.FriendlyName} is no longer available on this system, likely because the GPU was changed or disabled. Segra will use {Settings.Instance.Codec?.FriendlyName} until it is available again.",
+                        $"The codec {codec.FriendlyName} is no longer available on this system, likely because the GPU was changed or disabled. Rembobine will use {Settings.Instance.Codec?.FriendlyName} until it is available again.",
                         "warning"));
                     SettingsService.SaveSettings();
                     _ = MessageService.SendSettingsToFrontend("Codec fallback");

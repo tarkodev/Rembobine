@@ -80,7 +80,7 @@ if [[ $selected -eq 0 ]]; then
     echo "=== Done! ==="
     WIN_DIR=$(echo "$SCRIPT_DIR" | sed 's|^/\([a-zA-Z]\)/|\1:/|' | sed 's|/|\\|g')
     echo "Output: $WIN_DIR\\publish\\"
-    echo "Executable: $WIN_DIR\\publish\\Segra.exe"
+    echo "Executable: $WIN_DIR\\publish\\Rembobine.exe"
 else
     # -------- Linux --------
     # -p:TargetFrameworks=net10.0 restricts the restore to the Linux TFM, so the Windows TFM's packages
@@ -154,10 +154,10 @@ else
 fi
 
 export LD_LIBRARY_PATH="${LIBDIR:+$LIBDIR:}$HERE:$LD_LIBRARY_PATH"
-exec "$HERE/Segra" "$@"
+exec "$HERE/Rembobine" "$@"
 LAUNCHER
     chmod +x publish/run.sh 2>/dev/null || true
-    chmod +x publish/Segra 2>/dev/null || true
+    chmod +x publish/Rembobine 2>/dev/null || true
 
     # OBS resolves its subprocess helpers next to the running executable (readlink /proc/self/exe ->
     # dirname), NOT in the downloaded OBS bundle. Ship them beside Segra so NVENC probing

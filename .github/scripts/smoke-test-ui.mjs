@@ -1,6 +1,6 @@
-// Launches the published Segra.exe, attaches to its WebView2 over CDP and fails unless the
+// Launches the published Rembobine.exe, attaches to its WebView2 over CDP and fails unless the
 // main menu renders, the backend answers over its websocket, and no frontend asset or script fails.
-// Usage: node smoke-test-ui.mjs <path to Segra.exe> [screenshot.png]
+// Usage: node smoke-test-ui.mjs <path to Rembobine.exe> [screenshot.png]
 import { spawn, execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';

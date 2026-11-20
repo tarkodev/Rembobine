@@ -258,8 +258,8 @@ export default function CustomGameModal({ onSave, onClose, initialName }: Custom
       <div className="modal-body pt-3">
         <h3 className="font-bold text-2xl">Add Custom Game</h3>
         <p className="text-sm opacity-70 mt-1 pr-8">
-          For games Segra doesn&apos;t detect on its own. It records the game whenever one of these
-          executables runs.
+          For games Rembobine doesn&apos;t detect on its own. It records the game whenever one of
+          these executables runs.
         </p>
 
         <div className="mt-6 flex items-end gap-3">
@@ -293,8 +293,8 @@ export default function CustomGameModal({ onSave, onClose, initialName }: Custom
         </div>
         {catalogMatch && (
           <p className="text-xs opacity-70 mt-2">
-            Matches {catalogMatch.name} in Segra&apos;s game list, so it gets that game&apos;s icon
-            and cover.
+            Matches {catalogMatch.name} in Rembobine&apos;s game list, so it gets that game&apos;s
+            icon and cover.
           </p>
         )}
 

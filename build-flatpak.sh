@@ -59,7 +59,7 @@ cp -a packaging/linux/obs-helpers/obs-nvenc-test packaging/linux/obs-helpers/obs
 # The ffmpeg CLI (clips/thumbnails/waveforms): neither the GNOME runtime nor the ffmpeg-full
 # extension ships the binary, so bundle the host's, beside Segra where FFmpegService looks first.
 cp -L "$(command -v ffmpeg)" "$STAGING/payload/ffmpeg"
-chmod +x "$STAGING/payload/Segra" "$STAGING/payload/obs-nvenc-test" "$STAGING/payload/obs-ffmpeg-mux" "$STAGING/payload/ffmpeg"
+chmod +x "$STAGING/payload/Rembobine" "$STAGING/payload/obs-nvenc-test" "$STAGING/payload/obs-ffmpeg-mux" "$STAGING/payload/ffmpeg"
 
 # Bundle OBS's media deps (Ubuntu-24.04 FFmpeg 6/x264/jansson/rist/srt) that the runtime's FFmpeg 7 can't satisfy.
 LIBDST="$STAGING/payload/lib"
@@ -116,12 +116,12 @@ echo "=== 4/4 flatpak-builder ==="
 rm -rf build-dir repo output
 flatpak-builder --user --force-clean --repo=repo build-dir "$MANIFEST"
 mkdir -p output
-echo "=== Exporting Segra.flatpak ==="
-flatpak build-bundle repo "output/Segra.flatpak" "$APP_ID"
+echo "=== Exporting Rembobine.flatpak ==="
+flatpak build-bundle repo "output/Rembobine.flatpak" "$APP_ID"
 
 echo ""
 echo "=== Done ==="
-echo "Bundle:  $SCRIPT_DIR/output/Segra.flatpak"
+echo "Bundle:  $SCRIPT_DIR/output/Rembobine.flatpak"
 echo "Install/run:"
-echo "  flatpak install --user ./output/Segra.flatpak"
+echo "  flatpak install --user ./output/Rembobine.flatpak"
 echo "  flatpak run $APP_ID"

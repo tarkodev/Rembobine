@@ -44,7 +44,7 @@ export default function AdvancedSection({
         <h2 className="text-xl font-semibold mb-4">Updates</h2>
         {!canSelfUpdate && (
           <p className="text-sm opacity-70 mb-4">
-            Segra updates automatically through Flatpak. To update now, run{' '}
+            Rembobine updates automatically through Flatpak. To update now, run{' '}
             <code className="px-1 py-0.5 rounded bg-base-200">flatpak update tv.segra.Segra</code>{' '}
             or use your software center.
           </p>
@@ -174,7 +174,7 @@ export default function AdvancedSection({
             </Button>
           </div>
           <div>
-            Segrabi{' '}
+            Rembobine{' '}
             {__APP_VERSION__ === 'Developer Preview' ? __APP_VERSION__ : 'v' + __APP_VERSION__}
           </div>
         </div>

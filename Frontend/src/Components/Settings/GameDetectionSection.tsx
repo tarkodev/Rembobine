@@ -359,7 +359,8 @@ export default function GameDetectionSection() {
       <h2 className="text-xl font-semibold mb-2">Game Recording &amp; Overrides</h2>
       <p className="text-sm opacity-70 mb-4">
         Games you record show up here automatically. Pick one to change its recording settings or
-        whether it gets recorded. Add a game below only if Segra doesn&apos;t record it on its own.
+        whether it gets recorded. Add a game below only if Rembobine doesn&apos;t record it on its
+        own.
       </p>
 
       {/* Global auto-record toggle */}
@@ -562,7 +563,7 @@ function GamePanel({
       <div className="bg-base-200 rounded-lg border border-base-400 p-4">
         <div className="font-semibold">Automatic Recording</div>
         <div className="text-xs opacity-70 mt-0.5">
-          Whether Segra starts recording when this game launches. Auto-Record Games is currently{' '}
+          Whether Rembobine starts recording when this game launches. Auto-Record Games is currently{' '}
           {settings.autoRecordGames ? 'on' : 'off'}.
         </div>
         <div

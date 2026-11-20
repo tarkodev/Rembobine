@@ -19,8 +19,8 @@ focused on gameplay screenshots and more control over recording and playback.
   duration when a video is trimmed.
 - [x] Reuse the open File Explorer window for **Open Folder** and **Open File Location** on Windows.
   Opening a file location selects the requested file in its folder.
-- [x] Add `Segrabi.exe --quit` on Windows for local updates. It requests the same shutdown as **Quit Segrabi**
-  in the system tray and waits for the app to exit. It also succeeds if Segrabi is already closed.
+- [x] Add `Rembobine.exe --quit` on Windows for local updates. It requests the same shutdown as **Quit Rembobine**
+  in the system tray and waits for the app to exit. It also succeeds if Rembobine is already closed.
 - [x] Add **📷 Screenshots** below **Highlights** and a configurable **Take Screenshot** hotkey. It saves a PNG
   from the active game recording or replay buffer. Assign a key under **Settings → Hotkeys**.
 - [x] Add **Save Frame as Screenshot** to the paused video player. Both capture methods save to the same gallery
@@ -39,7 +39,7 @@ focused on gameplay screenshots and more control over recording and playback.
   for the current excerpt when a link is available.
 - [x] Add **Recording Start Sound** under **Settings → Preferences → App**, below **Sound Effects Volume**.
   **Off** mutes the start beep. **Manual Only** (default) plays it when you start a recording yourself.
-  **Manual & Automatic** also plays it when Segrabi starts a recording automatically. Saving a replay
+  **Manual & Automatic** also plays it when Rembobine starts a recording automatically. Saving a replay
   plays its own confirmation at the configured **Sound Effects Volume**.
 - [x] Add **Recording Stop Sound** next to **Recording Start Sound** with **Off**, **Manual Only** (default),
   and **Manual & Automatic**.
@@ -53,7 +53,7 @@ focused on gameplay screenshots and more control over recording and playback.
 
   > Replay Buffers are kept when freeing up space. When on, their size is excluded from the limit.
 
-Build Segrabi from source using the setup instructions in [CONTRIBUTING.md](CONTRIBUTING.md).
+Build Rembobine from source using the setup instructions in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Upstream Segra
 

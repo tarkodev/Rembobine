@@ -144,7 +144,7 @@ function startConfetti(host: Element): () => void {
   };
 }
 
-const GITHUB_REPO_URL = 'https://github.com/Segergren/Segra';
+const GITHUB_REPO_URL = 'https://github.com/tarkodev/Rembobine';
 
 function linkifyIssueReferences(text: string): string {
   return text.replace(/(?<!\[)#(\d+)/g, `[#$1](${GITHUB_REPO_URL}/issues/$1)`);
@@ -329,12 +329,12 @@ export default function ReleaseNotesModal({
       >
         <div className="min-w-0">
           <h2 className="font-bold text-2xl text-white leading-tight">
-            {celebrate ? 'Welcome to Segra 2.0' : "What's New"}
+            {celebrate ? 'Welcome to Rembobine 2.0' : "What's New"}
           </h2>
           <p className="text-sm text-gray-400 mt-0.5">
             {filterVersion
               ? `Updates since v${filterVersion}`
-              : 'Browse recent releases from Segra'}
+              : 'Browse recent releases from Rembobine'}
           </p>
         </div>
         <Button variant="ghost" icon size="sm" onClick={onClose} aria-label="Close">
@@ -356,7 +356,7 @@ export default function ReleaseNotesModal({
             </h3>
             <p className="text-sm text-gray-400 max-w-sm">
               {filterVersion
-                ? 'You are on the latest version of Segra. Check back after the next release for new changes.'
+                ? 'You are on the latest version of Rembobine. Check back after the next release for new changes.'
                 : 'We could not find any release notes to display right now.'}
             </p>
           </div>

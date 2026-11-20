@@ -246,8 +246,8 @@ export default function GameIntegrationsSection() {
         )}
       </div>
       <p className="text-sm opacity-70 mb-4">
-        Enable automatic event detection for supported games. When enabled, Segra will automatically
-        bookmark kills, goals, and other events during gameplay.
+        Enable automatic event detection for supported games. When enabled, Rembobine will
+        automatically bookmark kills, goals, and other events during gameplay.
       </p>
 
       {/* Up to 4 per row, based on the section's own width rather than the window */}

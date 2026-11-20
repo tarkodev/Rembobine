@@ -52,7 +52,7 @@ namespace Segra.Backend.Platform.Windows
                 SetMenuInfo(menu, ref menuInfo);
 
                 // Opens Segra or brings it to the front; bold as the default (double-click) action
-                AppendMenu(menu, MF_STRING, Open, "Open Segrabi");
+                AppendMenu(menu, MF_STRING, Open, "Open Rembobine");
                 SetMenuDefaultItem(menu, Open, 0);
                 SetItemBitmap(menu, Open, CreateIconBitmap(icon, iconSize), bitmaps);
                 if (recording || canStartRecording || canSaveReplay)
@@ -81,7 +81,7 @@ namespace Segra.Backend.Platform.Windows
                     SetItemBitmap(menu, ResetWindowSize, CreateLucideBitmap(iconSize, glyphColor, DrawMaximize), bitmaps);
                 }
                 AppendMenu(menu, MF_SEPARATOR, 0, null);
-                AppendMenu(menu, MF_STRING, Quit, "Quit Segrabi");
+                AppendMenu(menu, MF_STRING, Quit, "Quit Rembobine");
                 SetItemBitmap(menu, Quit, CreateLucideBitmap(iconSize, glyphColor, DrawX), bitmaps);
 
                 // Open upward from a bottom taskbar and downward from a top one

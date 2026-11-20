@@ -2,7 +2,7 @@
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <!--
     Pass 2: signs the Velopack-generated installer plus the two Velopack
-    auxiliary executables inside the update nupkg. Segra.exe inside the
+    auxiliary executables inside the update nupkg. Rembobine.exe inside the
     nupkg is already signed from Pass 1.
   -->
   <zip-file>
@@ -12,7 +12,7 @@
     <nupkg-file path="Segra-*-full.nupkg">
       <pe-file-set>
         <include path="lib/app/Squirrel.exe" />
-        <include path="lib/app/Segra_ExecutionStub.exe" />
+        <include path="lib/app/Rembobine_ExecutionStub.exe" />
         <for-each>
           <authenticode-sign />
         </for-each>

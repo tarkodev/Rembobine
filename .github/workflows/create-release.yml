@@ -120,7 +120,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 5
         run: |
-          node ./.github/scripts/smoke-test-ui.mjs ./publish/Segra.exe ./smoke-test.png
+          node ./.github/scripts/smoke-test-ui.mjs ./publish/Rembobine.exe ./smoke-test.png
           $code = $LASTEXITCODE
           Copy-Item "$env:APPDATA/Segra/logs.log" ./segra.log -ErrorAction SilentlyContinue
           exit $code
@@ -142,8 +142,8 @@ jobs:
         with:
           name: Segra-exe-unsigned
           path: |
-            ./publish/Segra.exe
-            ./publish/Segra.dll
+            ./publish/Rembobine.exe
+            ./publish/Rembobine.dll
             ./publish/Segra.Hotkeys.exe
           if-no-files-found: error
           retention-days: 1
@@ -166,7 +166,7 @@ jobs:
             Write-Warning "Pushover notification failed: $_"
           }
 
-      - name: Sign Segra.exe (Pass 1)
+      - name: Sign Rembobine.exe (Pass 1)
         id: sign_pass1
         uses: signpath/github-action-submit-signing-request@v2
         with:
@@ -185,7 +185,7 @@ jobs:
         run: ./.github/scripts/wait-signpath.ps1 -SignedArtifactUrl '${{ steps.sign_pass1.outputs.signed-artifact-download-url }}' -OutputDirectory ./publish
 
       - name: Package with vpk for Final Release
-        run: vpk pack -u Segra -v ${{ steps.extract_final_version.outputs.final_version_number }} -p ./publish -e Segra.exe -o ./output --packTitle "Segra" --noPortable -i ./Resources/icon.ico -s ./Resources/splash.png --splashProgressColor "#fecb00" --framework webview2,vcredist143-x64
+        run: vpk pack -u Segra -v ${{ steps.extract_final_version.outputs.final_version_number }} -p ./publish -e Rembobine.exe -o ./output --packTitle "Rembobine" --aumid tarkodev.Rembobine --noPortable -i ./Resources/icon.ico -s ./Resources/splash.png --splashProgressColor "#fecb00" --framework webview2,vcredist143-x64
         shell: pwsh
 
       - name: Upload Velopack output for signing (Pass 2)
@@ -282,6 +282,10 @@ jobs:
           echo "final_version_tag=$final_tag" >> $env:GITHUB_OUTPUT
           Write-Host "Final Git tag $final_tag created and pushed."
 
+      - name: Name the signed installer for distribution
+        shell: pwsh
+        run: Rename-Item ./output/Segra-win-Setup.exe Rembobine-win-Setup.exe
+
       - name: Upload Final Release Artifact (for release job)
         uses: actions/upload-artifact@v7
         with:
@@ -319,12 +323,12 @@ jobs:
           prerelease: false
           generate_release_notes: false
           files: |
-            ./Segra-win-Setup.exe
+            ./Rembobine-win-Setup.exe
             ./RELEASES
             ./releases.win.json
             ./assets.win.json
             ./Segra-${{ needs.build_and_release.outputs.final_version_number }}-full.nupkg
-            ./linux/Segra.flatpak
+            ./linux/Rembobine.flatpak
 
   # Linux Flatpak, built in parallel with Windows; continue-on-error so it never blocks the release.
   build_linux:
@@ -372,7 +376,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Segra-Linux
-          path: ./output/Segra.flatpak
+          path: ./output/Rembobine.flatpak
           compression-level: 0
           if-no-files-found: error
           retention-days: 1
@@ -400,8 +404,8 @@ jobs:
           fi
           # The broker and app code are scanned on their own since VirusTotal may not unpack the Velopack installer.
           mkdir -p vt
-          unzip -j -o Segra-*-full.nupkg lib/app/Segra.Hotkeys.exe lib/app/Segra.dll -d vt
-          for FILE in ./Segra-win-Setup.exe ./vt/Segra.Hotkeys.exe ./vt/Segra.dll; do
+          unzip -j -o Segra-*-full.nupkg lib/app/Segra.Hotkeys.exe lib/app/Rembobine.dll -d vt
+          for FILE in ./Rembobine-win-Setup.exe ./vt/Segra.Hotkeys.exe ./vt/Rembobine.dll; do
             if [ ! -f "$FILE" ]; then
               echo "::warning::$FILE not found; skipping"
               continue
