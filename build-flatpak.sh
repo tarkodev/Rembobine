@@ -109,7 +109,7 @@ cp packaging/flatpak/segra.sh "$STAGING/"
 cp "packaging/flatpak/${APP_ID}.desktop" "$STAGING/"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" \
     "packaging/flatpak/${APP_ID}.metainfo.xml" > "$STAGING/${APP_ID}.metainfo.xml"
-# 256x256 PNG (the repo's icon.png is 1000x1000; Flatpak caps hicolor icons at 512x512).
+# Install the application's 256x256 hicolor icon.
 cp packaging/flatpak/icon-256.png "$STAGING/icon-256.png"
 
 echo "=== 4/4 flatpak-builder ==="

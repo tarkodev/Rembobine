@@ -1,4 +1,6 @@
-# Segrabi
+# Rembobine
+
+<img src="icon.svg" width="96" height="96" alt="Rembobine" />
 
 An unofficial fork of [Segra](https://github.com/Segergren/Segra)
 focused on gameplay screenshots and more control over recording and playback.
