@@ -80,8 +80,9 @@ namespace Segra.Backend.Media
                 progressCallback?.Invoke(10, "Extracting clips...");
 
                 // Extract and concatenate segments using stream copy - preserve source audio track names
-                using var bookmarks = new ClipBookmarks();
-                var excerpts = new List<Segment>();
+                var sourceBookmarks = content.GetBookmarks();
+                var excerpts = new List<SourceExcerpt>();
+                var events = new List<Bookmark>();
                 bool success = await ExtractAndConcatenateSegments(
                     inputFilePath,
                     outputFilePath,
@@ -94,18 +95,10 @@ namespace Segra.Backend.Media
                         double end = origin + duration;
                         if (content.Duration > TimeSpan.Zero) end = Math.Min(end, content.Duration.TotalSeconds);
                         if (end <= start) return;
-                        var excerpt = new Segment
-                        {
-                            ContentId = content.Id,
-                            FileName = content.FileName,
-                            FilePath = content.FilePath,
-                            Type = content.Type.ToString(),
-                            Game = content.Game ?? "Unknown",
-                            StartTime = start,
-                            EndTime = end
-                        };
-                        bookmarks.Track(excerpt, offset + start - origin);
-                        excerpts.Add(excerpt);
+                        double outputOffset = offset + start - origin;
+                        excerpts.Add(new(content.Id, start, end, outputOffset));
+                        events.AddRange(ClipBookmarks.InRange(sourceBookmarks, TimeSpan.FromSeconds(start),
+                            TimeSpan.FromSeconds(end), TimeSpan.FromSeconds(outputOffset)));
                     }
                 );
 
@@ -124,9 +117,8 @@ namespace Segra.Backend.Media
 
                 // Create metadata, thumbnail, and waveform.
                 // Highlights use stream-copy extract+concat, so they preserve the source's audio tracks.
-                string? highlightId = await ContentService.CreateMetadataFile(outputFilePath, Content.ContentType.Highlight, content.Game!, bookmarks.InOutput(excerpts), content.Title, igdbId: content.IgdbId, audioTrackNames: content.AudioTrackNames, audioTrackTypes: content.AudioTrackTypes, gameExePath: content.GameExePath);
+                string? highlightId = await ContentService.CreateMetadataFile(outputFilePath, Content.ContentType.Highlight, content.Game!, events.OrderBy(b => b.Time).ToList(), content.Title, igdbId: content.IgdbId, audioTrackNames: content.AudioTrackNames, audioTrackTypes: content.AudioTrackTypes, gameExePath: content.GameExePath, sourceExcerpts: excerpts);
                 if (highlightId == null) throw new IOException("Could not save highlight metadata");
-                await bookmarks.SaveAsync([(highlightId, excerpts)]);
 
                 progressCallback?.Invoke(95, "Creating thumbnail...");
                 await ContentService.CreateThumbnail(outputFilePath, Content.ContentType.Highlight, highlightId);

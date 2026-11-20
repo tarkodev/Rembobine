@@ -277,6 +277,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     setDuration(metadataDuration);
   }, [video.id, metadataDuration]);
   const [zoom, setZoom] = useState(1);
+  const wheelZoomRef = useRef(1);
 
   // Scale and pan state for zooming into the video element itself
   const [videoScale, setVideoScale] = useState(1);
@@ -617,6 +618,9 @@ export default function VideoComponent({ video }: { video: Content }) {
 
     const onLoadedMetadata = () => {
       setDuration(vid.duration);
+      cancelAnimationFrame(zoomAnimationRef.current);
+      wheelZoomRef.current = 1;
+      pendingScrollRef.current = null;
       setZoom(1);
     };
 
@@ -895,14 +899,6 @@ export default function VideoComponent({ video }: { video: Content }) {
     };
   }, []);
 
-  // Create refs to track zoom state
-  const wheelZoomRef = useRef(zoom);
-
-  // Update the wheel zoom ref when zoom changes from other sources (buttons)
-  useEffect(() => {
-    wheelZoomRef.current = zoom;
-  }, [zoom]);
-
   const hideCursor = () => {
     cursorHiddenRef.current = true;
     if (playerContainerRef.current) {
@@ -1051,12 +1047,12 @@ export default function VideoComponent({ video }: { video: Content }) {
     const handleWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
       e.preventDefault();
-      if (duration === 0) return;
+      if (duration <= 0 || containerWidth <= 0 || e.deltaY === 0) return;
 
       // Get container dimensions
       const rect = container.getBoundingClientRect();
       const cursorX = e.clientX - rect.left;
-      const scrollLeft = container.scrollLeft;
+      const scrollLeft = pendingScrollRef.current ?? container.scrollLeft;
 
       // Calculate base pixels per second for time conversion
       const basePixelsPerSecond = containerWidth / duration;
@@ -1066,8 +1062,10 @@ export default function VideoComponent({ video }: { video: Content }) {
       const timeAtCursor = (cursorX + scrollLeft) / oldPixelsPerSecond;
 
       // Calculate new zoom level
-      const zoomFactor = e.deltaY < 0 ? 1.2 : 0.8;
+      const zoomFactor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
       const newZoom = Math.min(Math.max(wheelZoomRef.current * zoomFactor, 1), 1000);
+      cancelAnimationFrame(zoomAnimationRef.current);
+      if (newZoom === wheelZoomRef.current) return;
 
       // Update zoom ref immediately
       wheelZoomRef.current = newZoom;
@@ -1077,11 +1075,11 @@ export default function VideoComponent({ video }: { video: Content }) {
       const newCursorPosition = timeAtCursor * newPixelsPerSecond;
       const newScrollLeft = newCursorPosition - cursorX;
 
-      // Cancel any running button zoom animation
-      cancelAnimationFrame(zoomAnimationRef.current);
-
       // Store scroll target — useLayoutEffect applies after React commits DOM
-      pendingScrollRef.current = newScrollLeft;
+      pendingScrollRef.current = Math.max(
+        0,
+        Math.min(containerWidth * (newZoom - 1), newScrollLeft),
+      );
       setZoom(newZoom);
     };
 
@@ -1090,28 +1088,29 @@ export default function VideoComponent({ video }: { video: Content }) {
 
     return () => {
       container.removeEventListener('wheel', handleWheel, wheelEventOptions);
+      cancelAnimationFrame(zoomAnimationRef.current);
     };
-  }, [duration, containerWidth]); // Remove zoom from dependencies to prevent recreation
+  }, [duration, containerWidth]);
 
   const handleZoomChange = (increment: boolean) => {
-    if (!scrollContainerRef.current) return;
+    if (!scrollContainerRef.current || duration <= 0 || containerWidth <= 0) return;
 
     const container = scrollContainerRef.current;
-    const scrollLeft = container.scrollLeft;
+    const scrollLeft = pendingScrollRef.current ?? container.scrollLeft;
     const bpps = containerWidth / duration;
+    const startZoom = wheelZoomRef.current;
 
     // Anchor point: keep current time marker at same viewport position
     const markerTime = currentTime;
-    const markerViewportX = markerTime * bpps * zoom - scrollLeft;
+    const markerViewportX = markerTime * bpps * startZoom - scrollLeft;
 
     // Compute target zoom
-    const newZoom = increment ? zoom * 1.5 : zoom * 0.5;
+    const newZoom = increment ? startZoom * 1.5 : startZoom / 1.5;
     const targetZoom = Math.min(Math.max(newZoom, 1), 1000);
 
     // Cancel any running animation
     cancelAnimationFrame(zoomAnimationRef.current);
 
-    const startZoom = zoom;
     const animDuration = 200;
     const startTime = performance.now();
 
@@ -1123,7 +1122,13 @@ export default function VideoComponent({ video }: { video: Content }) {
       const currentZoom = startZoom + (targetZoom - startZoom) * eased;
 
       // Compute scroll so marker stays at same viewport x
-      pendingScrollRef.current = markerTime * bpps * currentZoom - markerViewportX;
+      pendingScrollRef.current = Math.max(
+        0,
+        Math.min(
+          containerWidth * (currentZoom - 1),
+          markerTime * bpps * currentZoom - markerViewportX,
+        ),
+      );
       wheelZoomRef.current = currentZoom;
       setZoom(currentZoom);
 
@@ -2104,10 +2109,16 @@ export default function VideoComponent({ video }: { video: Content }) {
   );
 
   const timelineBookmarks = useMemo(() => {
-    if (!video.id.startsWith('live-')) return video.bookmarks;
+    // Older releases wrote reverse links to highlights as ClipSaved bookmarks.
+    const isTimelineBookmark = (b: Bookmark) => {
+      const media = b.type === BookmarkType.ClipSaved ? getBookmarkMedia(b) : undefined;
+      return !(media?.type === 'video' && media.video.type === 'Highlight');
+    };
+    const bookmarks = video.bookmarks.filter(isTimelineBookmark);
+    if (!video.id.startsWith('live-')) return bookmarks;
     const recording = appState.recording;
     // The live snapshot on the Back stack can outlast the media it linked to.
-    const snapshot = video.bookmarks.filter(
+    const snapshot = bookmarks.filter(
       (b) => !bookmarkMediaNames[b.type] || !b.mediaId || getBookmarkMedia(b),
     );
     if (recording?.filePath !== video.filePath) return snapshot;
@@ -2116,6 +2127,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       (b) =>
         (b.type === BookmarkType.ClipSaved || b.type === BookmarkType.ScreenshotSaved) &&
         !ids.has(b.id) &&
+        isTimelineBookmark(b) &&
         getBookmarkMedia(b) &&
         timeStringToSeconds(b.time) <= duration,
     );
@@ -2367,11 +2379,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       {bookmarkMenu && (
         <BookmarkMediaMenu
           trigger={bookmarkMenu.trigger}
-          openLabel={
-            linkedBookmarkMedia?.type === 'video' && linkedBookmarkMedia.video.type === 'Highlight'
-              ? 'Open Highlight'
-              : `Open ${bookmarkMediaNames[bookmarkMenu.bookmark.type]}`
-          }
+          openLabel={`Open ${bookmarkMediaNames[bookmarkMenu.bookmark.type]}`}
           canOpen={Boolean(linkedBookmarkMedia)}
           onOpen={() =>
             linkedBookmarkMedia && openMedia(linkedBookmarkMedia, bookmarkMenu.bookmark.clipOffset)
@@ -2757,7 +2765,7 @@ export default function VideoComponent({ video }: { video: Content }) {
             }}
           >
             <div
-              className="ticks-container relative h-[42px]"
+              className="ticks-container relative min-h-[42px]"
               onClick={handleTimelineClick}
               style={{
                 width: `${duration * pixelsPerSecond}px`,
@@ -2768,6 +2776,7 @@ export default function VideoComponent({ video }: { video: Content }) {
               {bookmarksReady && (
                 <BookmarkTrack
                   bookmarks={filteredBookmarks}
+                  rulerWidth={duration * pixelsPerSecond}
                   duration={duration}
                   icons={bookmarkIcons}
                   label={bookmarkLabel}
@@ -3184,6 +3193,7 @@ export default function VideoComponent({ video }: { video: Content }) {
               <div className="flex items-center h-10 gap-1 px-0 border rounded-lg bg-base-300 border-base-400">
                 <button
                   onClick={() => handleZoomChange(false)}
+                  aria-label="Zoom out on timeline"
                   className="btn btn-sm h-full btn-secondary disabled:opacity-100 disabled:bg-base-300"
                   disabled={zoom <= 1}
                 >
@@ -3194,6 +3204,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                 </span>
                 <button
                   onClick={() => handleZoomChange(true)}
+                  aria-label="Zoom in on timeline"
                   className="btn btn-sm h-full btn-secondary"
                   disabled={zoom >= 1000}
                 >

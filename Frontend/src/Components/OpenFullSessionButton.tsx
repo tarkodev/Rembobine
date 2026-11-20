@@ -43,6 +43,14 @@ export default function OpenFullSessionButton({
   const links = useMemo(() => {
     const matches: SourceExcerpt[] = [];
     if (!mediaId) return matches;
+    const excerpts = isClip
+      ? content.find((item) => item.id === mediaId)?.sourceExcerpts
+      : undefined;
+    for (const excerpt of excerpts ?? []) {
+      const source = content.find((item) => item.id === excerpt.sourceId);
+      if (source)
+        matches.push({ source, start: excerpt.start, end: excerpt.end, offset: excerpt.offset });
+    }
     const collect = (marks: Bookmark[], source?: Content) => {
       for (const mark of marks) {
         if (mark.type !== bookmarkType || mark.mediaId !== mediaId || mark.inherited) continue;

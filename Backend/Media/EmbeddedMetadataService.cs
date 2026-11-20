@@ -96,6 +96,7 @@ namespace Segra.Backend.Media
                     AudioTrackNames = content.AudioTrackNames,
                     AudioTrackTypes = content.AudioTrackTypes,
                     Compressed = content.Compressed,
+                    SourceExcerpts = content.SourceExcerpts,
                     Bookmarks = content.GetBookmarks().Where(b => !ContentService.IsDeletedMediaBookmark(b))
                         .OrderBy(b => b.Time).ToList(),
                     Matches = content.Matches is { Count: > 0 } ? content.Matches : null,
@@ -897,6 +898,8 @@ namespace Segra.Backend.Media
         public List<string>? AudioTrackNames { get; init; }
         public List<string>? AudioTrackTypes { get; init; }
         public bool Compressed { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<SourceExcerpt>? SourceExcerpts { get; init; }
         public List<Bookmark> Bookmarks { get; init; } = [];
         // Left out when empty so metadata written before matches existed stays identical
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

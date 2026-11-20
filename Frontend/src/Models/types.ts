@@ -18,6 +18,7 @@ export interface Content {
   title: string;
   game: string;
   bookmarks: Bookmark[];
+  sourceExcerpts?: { sourceId: string; start: number; end: number; offset: number }[];
   matches?: Match[];
   fileName: string;
   filePath: string;

@@ -162,6 +162,22 @@ try {
     }
     Write-Output 'Clip bookmark projection passed for separate, combined, reclip, embedded MP4 and idempotent legacy recovery.'
     Write-Output 'Clip dates passed for default exports, separate and combined exports, midnight, a legacy replay and unknown capture time.'
+
+    $highlightService = $assembly.GetType('Segra.Backend.Media.HighlightService', $true)
+    $sourceBefore = ($state.Content | Where-Object Id -eq $sessionId).GetBookmarks() | ConvertTo-Json -Depth 8
+    [void]$highlightService::CreateHighlightFromBookmarks($sessionId, $null).GetAwaiter().GetResult()
+    $highlight = $state.Content | Where-Object Type -eq 'Highlight' | Select-Object -First 1
+    $sourceAfter = ($state.Content | Where-Object Id -eq $sessionId).GetBookmarks() | ConvertTo-Json -Depth 8
+    if (!$highlight -or $sourceAfter -ne $sourceBefore) { throw 'Creating a highlight changed source bookmarks or failed' }
+    $range = $highlight.SourceExcerpts | Select-Object -First 1
+    $embedded = $embeddedMetadata::ReadAsync($highlight.FilePath).GetAwaiter().GetResult()
+    if ($range.SourceId -ne $sessionId -or $embedded.SourceExcerpts[0] -ne $range) { throw 'Lost highlight source range' }
+    $fromHighlight = Invoke-Export @{ id = 5; contentId = $highlight.Id; startTime = $range.Offset + 0.25; endTime = $range.Offset + 0.75 }
+    $link = ($state.Content | Where-Object Id -eq $sessionId).GetBookmarks() | Where-Object MediaId -eq $fromHighlight.Id
+    if (@($link).Count -ne 1 -or $link.ClipStart.TotalSeconds -ne $range.Start + 0.25 -or $link.Time.TotalSeconds -ne $range.Start + 0.75) {
+        throw 'Clip made from a highlight did not project its range to the source session'
+    }
+    Write-Output 'Highlight export, embedded source range and clipping a highlight passed without a highlight bookmark.'
 } finally {
     [Environment]::CurrentDirectory = $originalDirectory
     $resolved = (Resolve-Path -LiteralPath $fixture).Path

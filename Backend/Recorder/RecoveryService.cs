@@ -285,7 +285,8 @@ namespace Segra.Backend.Recorder
                     gameExePath: sameGame ? embedded!.GameExePath : null,
                     matches: embedded?.Matches,
                     recordingStartedAt: embedded?.RecordingStartedAt,
-                    exportedAt: embedded?.ExportedAt
+                    exportedAt: embedded?.ExportedAt,
+                    sourceExcerpts: embedded?.SourceExcerpts
                 );
 
                 await SendProgress(92, "importing");

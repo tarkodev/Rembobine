@@ -277,6 +277,7 @@ internal sealed class LibraryVideoIndex
             CreatedAt = embedded?.CreatedAt ?? File.GetCreationTime(path),
             RecordingStartedAt = embedded?.RecordingStartedAt,
             ExportedAt = embedded?.ExportedAt,
+            SourceExcerpts = embedded?.SourceExcerpts,
             LibraryFileIdentity = identity,
             IgdbId = embedded?.IgdbId,
             GameExePath = embedded?.GameExePath,

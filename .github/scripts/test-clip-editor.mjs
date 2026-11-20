@@ -313,12 +313,13 @@ try {
   assert.ok(await page.getByRole("radio", { name: "Combined" }).isChecked());
   await page.keyboard.press("Escape");
 
-  // Two captures share the first timestamp, two are slightly apart, three share the last.
+  // Two captures share the first timestamp, two are slightly apart, four share the last.
   const times = [
     "00:00:00",
     "00:00:00",
     "00:00:04.000",
     "00:00:04.016",
+    "00:00:12",
     "00:00:12",
     "00:00:12",
     "00:00:12",
@@ -344,17 +345,83 @@ try {
       bookmarks.push(
         { id: 20, time: "00:00:08", type: "ScreenshotSaved" },
         { id: 21, time: "00:00:08", type: "ClipSaved" },
+        {
+          id: 22,
+          time: "00:00:12",
+          clipStart: "00:00:02",
+          type: "ClipSaved",
+          mediaId: "legacy-highlight",
+        },
       );
       window.dispatchEvent(
         new CustomEvent("websocket-message", {
           detail: {
             method: "State",
-            content: { content: [{ ...session, bookmarks }], screenshots },
+            content: {
+              content: [
+                { ...session, bookmarks },
+                { ...session, id: "legacy-highlight", type: "Highlight" },
+              ],
+              screenshots,
+            },
           },
         }),
       );
     },
     { session, times },
+  );
+  // Wheel events can arrive several times before React paints. Check both the
+  // cursor time and the marker's actual line tip throughout each zoom burst.
+  const zoomError = await page.evaluate(async () => {
+    const ruler = document.querySelector(".ticks-container");
+    const scroller = ruler.parentElement;
+    const cursor = scroller.clientWidth / 3;
+    const initialWidth = ruler.getBoundingClientRect().width;
+    let markerError = 0,
+      cursorError = 0;
+    function measure() {
+      const bounds = ruler.getBoundingClientRect();
+      const line = ruler.querySelector(
+        'button[aria-label^="Screenshot Saved at 00:00:04.000"] line',
+      );
+      if (!line) return;
+      const tip = new DOMPoint(
+        line.x2.baseVal.value,
+        line.y2.baseVal.value,
+      ).matrixTransform(line.getScreenCTM());
+      markerError = Math.max(
+        markerError,
+        Math.abs(tip.x - bounds.left - bounds.width / 3),
+      );
+      cursorError = Math.max(
+        cursorError,
+        Math.abs(
+          scroller.scrollLeft + cursor - (bounds.width * cursor) / initialWidth,
+        ),
+      );
+    }
+    const observer = new MutationObserver(measure);
+    observer.observe(ruler, { attributes: true, attributeFilter: ["style"] });
+    for (const deltaY of [-100, -100, 100, -100, 100, 100, 100, 100]) {
+      for (let i = 0; i < 3; i++) {
+        scroller.dispatchEvent(
+          new WheelEvent("wheel", {
+            deltaY,
+            clientX: scroller.getBoundingClientRect().left + cursor,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+      await new Promise(requestAnimationFrame);
+      measure();
+    }
+    observer.disconnect();
+    return { markerError, cursorError };
+  });
+  assert.ok(
+    zoomError.markerError < 2 && zoomError.cursorError < 3,
+    JSON.stringify(zoomError),
   );
   for (const fullscreen of [false, true]) {
     if (fullscreen) {
@@ -411,24 +478,117 @@ try {
       await page.keyboard.press("Escape");
     }
     await button("Clip Saved at 00:00:08, 2 of 2").first().waitFor();
-    await button("3 bookmarks").first().hover();
-    const grouped = page.getByRole("group", { name: "Overlapping bookmarks" });
-    await grouped.waitFor();
-    assert.equal(await grouped.getByRole("button").count(), 3);
-    const groupedCapture = grouped.getByRole("button").first();
-    assert.equal(
-      await groupedCapture.getAttribute("title"),
-      "Screenshot Saved · 00:12",
-    );
-    assert.equal(
-      await groupedCapture.locator("span").last().innerText(),
-      "00:12",
-    );
-    await page.keyboard.press("Escape");
+    assert.equal(await button(/Clip Saved at 00:00:12/).count(), 0);
+    assert.equal(await button(/^\d+ bookmarks$/).count(), 0);
+    let previousRight = 0;
+    for (let i = 1; i <= 4; i++) {
+      const capture = button(`Screenshot Saved at 00:00:12, ${i} of 4`).first();
+      const rect = await capture.boundingBox();
+      assert.ok(rect && rect.x >= previousRight);
+      previousRight = rect.x + rect.width;
+      await capture.hover();
+      assert.equal(await page.getByRole("tooltip").innerText(), "00:12");
+      await capture.click();
+      await button("Open Screenshot").waitFor();
+      await page.keyboard.press("Escape");
+    }
   }
+  await page.keyboard.press("Escape"); // Leave fullscreen.
+  const ticks = page.locator(".ticks-container");
+  const originalWidth = (await ticks.boundingBox()).width;
+  await seek(4);
+  await button("Zoom in on timeline").click();
+  await page.waitForFunction(
+    (w) => document.querySelector(".ticks-container").offsetWidth > w * 1.1,
+    originalWidth,
+  );
+  await button("Zoom out on timeline").click();
+  await page.waitForFunction(
+    (w) =>
+      Math.abs(document.querySelector(".ticks-container").offsetWidth - w) < 1,
+    originalWidth,
+  );
+  await page.evaluate(
+    (source) =>
+      window.dispatchEvent(
+        new CustomEvent("websocket-message", {
+          detail: {
+            method: "State",
+            content: {
+              content: [
+                {
+                  ...source,
+                  bookmarks: Array.from({ length: 80 }, (_, id) => ({
+                    id,
+                    type: "Manual",
+                    time: "00:00:06",
+                  })),
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    session,
+  );
+  const many = ticks.locator("button[data-bookmark-control]");
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(
+        ".ticks-container button[data-bookmark-control]",
+      ).length === 80,
+  );
+  assert.ok(
+    await many.evaluateAll((markers) =>
+      markers.every((marker) => {
+        const rect = marker.getBoundingClientRect();
+        return marker.contains(
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ),
+        );
+      }),
+    ),
+    "All 80 coincident markers must have independent hit targets",
+  );
+  await page.evaluate(
+    (source) =>
+      window.dispatchEvent(
+        new CustomEvent("websocket-message", {
+          detail: {
+            method: "State",
+            content: {
+              content: [
+                source,
+                {
+                  ...source,
+                  id: "new-highlight",
+                  type: "Highlight",
+                  filePath: "X:/highlight.mp4",
+                  sourceExcerpts: [
+                    { sourceId: source.id, start: 5, end: 8, offset: 0 },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    session,
+  );
+  await button("Highlights").click();
+  await page.locator('[data-content-id="new-highlight"]').click();
+  await isPlayingFile("X:/highlight.mp4");
+  await seek(1.25);
+  await button("Open Full Session").click();
+  await isPlayingFile("X:/source.mp4");
+  await page.waitForFunction(
+    () => Math.abs(document.querySelector("video").currentTime - 6.25) < 0.25,
+  );
   assert.deepEqual(errors, []);
   console.log(
-    "Clip editor, Escape navigation and overlapping screenshot previews passed in both player layouts.",
+    "Clip editor, individual bookmarks, legacy highlights and rapid timeline zoom passed.",
   );
 } finally {
   await browser?.close();

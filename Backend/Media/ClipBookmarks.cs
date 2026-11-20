@@ -10,13 +10,11 @@ internal sealed class ClipBookmarks : IDisposable
     private sealed record Link(Bookmark Bookmark, string? ContentId, string? LivePath, Recording.PendingMediaBookmark? Pending);
     private readonly Dictionary<Segment, List<Link>> _links = [];
     private readonly Dictionary<Segment, Bookmark[]> _sourceBookmarks = [];
-    private readonly Dictionary<Segment, double> _outputOffsets = [];
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    public void Track(Segment segment, double? outputOffset = null)
+    public void Track(Segment segment)
     {
-        if (outputOffset.HasValue) _outputOffsets[segment] = outputOffset.Value;
         var links = _links[segment] = [];
         var library = AppState.Instance.Content;
         var recording = AppState.Instance.Recording;
@@ -49,12 +47,12 @@ internal sealed class ClipBookmarks : IDisposable
         if (source.Type == Content.ContentType.Session) return;
         foreach (var ancestor in library.Where(c => c.Id != source.Id))
         {
-            foreach (var mark in Project(ancestor.GetBookmarks(), source, segment, ancestor.Duration.TotalSeconds))
+            foreach (var mark in Project(ancestor.Id, ancestor.GetBookmarks(), source, segment, ancestor.Duration.TotalSeconds))
                 links.Add(new(mark, ancestor.Id, null, null));
         }
         if (recording?.FilePath != null)
         {
-            foreach (var mark in Project(recording.GetBookmarks(), source, segment, double.PositiveInfinity))
+            foreach (var mark in Project(null, recording.GetBookmarks(), source, segment, double.PositiveInfinity))
                 links.Add(new(mark, null, PathUtils.Normalize(recording.FilePath), recording.BeginLinkedBookmark(mark)));
         }
     }
@@ -68,42 +66,40 @@ internal sealed class ClipBookmarks : IDisposable
     };
 
     // Translate an excerpt into the original recording and any surviving intermediate sources.
-    private static IEnumerable<Bookmark> Project(IEnumerable<Bookmark> markers, Content source, Segment segment, double sessionDuration)
+    private static IEnumerable<Bookmark> Project(string? parentId, IEnumerable<Bookmark> markers, Content source, Segment segment, double sessionDuration)
     {
+        if (source.SourceExcerpts is { } excerpts)
+        {
+            foreach (var range in excerpts.Where(e => e.SourceId == parentId))
+                if (Intersect(range.Start, range.Offset, range.End - range.Start) is { } mark)
+                    yield return mark;
+        }
         foreach (var origin in markers)
         {
             if (origin.Inherited || origin.MediaId != source.Id) continue;
-            double sessionStart = origin.Time.TotalSeconds;
-            double mediaStart, length;
+            Bookmark? mark = null;
             if (source.GetReplayStart(origin) is TimeSpan replayStart)
-            {
-                mediaStart = 0;
-                length = source.Duration.TotalSeconds;
-                sessionStart = replayStart.TotalSeconds;
-            }
+                mark = Intersect(replayStart.TotalSeconds, 0, source.Duration.TotalSeconds);
             else if (source.Type is Content.ContentType.Clip or Content.ContentType.Highlight && origin.Type == BookmarkType.ClipSaved &&
                      origin.ClipOffset is double offset && origin.ClipStart is TimeSpan clipStart)
-            {
-                mediaStart = offset;
-                length = (origin.Time - clipStart).TotalSeconds;
-                sessionStart = clipStart.TotalSeconds;
-            }
-            else continue;
+                mark = Intersect(clipStart.TotalSeconds, offset, (origin.Time - clipStart).TotalSeconds);
+            if (mark != null) yield return mark;
+        }
 
+        Bookmark? Intersect(double sessionStart, double mediaStart, double length)
+        {
             double start = Math.Max(segment.StartTime, mediaStart + Math.Max(0, -sessionStart));
             double end = Math.Min(segment.EndTime, mediaStart + Math.Min(length, sessionDuration - sessionStart));
-            if (end > start)
-                yield return Excerpt(sessionStart + start - mediaStart, sessionStart + end - mediaStart, start - segment.StartTime);
+            return end > start ? Excerpt(sessionStart + start - mediaStart, sessionStart + end - mediaStart, start - segment.StartTime) : null;
         }
     }
 
     // Output order is the player's segment order, including repeats and cuts from different sources.
-    private IEnumerable<(Segment Segment, double Offset)> Positions(List<Segment> segments)
+    private static IEnumerable<(Segment Segment, double Offset)> Positions(List<Segment> segments)
     {
         double offset = 0;
         foreach (var segment in segments)
         {
-            offset = _outputOffsets.GetValueOrDefault(segment, offset);
             yield return (segment, offset);
             offset += segment.EndTime - segment.StartTime;
         }

@@ -1446,6 +1446,8 @@ namespace Segra.Backend.Core.Models
         }
     }
 
+    public sealed record SourceExcerpt(string SourceId, double Start, double End, double Offset);
+
     public class Content
     {
         private readonly object _bookmarksLock = new();
@@ -1468,6 +1470,9 @@ namespace Segra.Backend.Core.Models
         public string? LibraryFileIdentity { get; set; }
 
         public ContentType Type { get; set; } = ContentType.Session;
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<SourceExcerpt>? SourceExcerpts { get; set; }
 
         public string Title { get; set; } = string.Empty;
 
