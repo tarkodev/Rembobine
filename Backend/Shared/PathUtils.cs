@@ -4,7 +4,7 @@ namespace Segra.Backend.Shared
     {
         // Paths cross JSON boundaries (metadata, settings, WebSocket) and end up in logs,
         // so they're standardized on forward slashes. The few consumers that require
-        // backslashes (e.g. explorer.exe /select) convert at the call site.
+        // backslashes (e.g. Windows shell APIs) convert at the call site.
         public static string Normalize(string path)
         {
             return string.IsNullOrEmpty(path) ? path : path.Replace('\\', '/');

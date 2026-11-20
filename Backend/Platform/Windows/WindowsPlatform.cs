@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Serilog;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -140,6 +141,8 @@ namespace Segra.Backend.Platform.Windows
 
     internal sealed class WindowsNativeDialogs : INativeDialogs
     {
+        private readonly SemaphoreSlim explorerGate = new(1, 1);
+
         public Task<string?> PickFolderAsync(string description) => RunSta<string?>(() =>
         {
             using var fbd = new FolderBrowserDialog
@@ -180,14 +183,47 @@ namespace Segra.Backend.Platform.Windows
             return ofd.ShowDialog() == DialogResult.OK ? ofd.FileNames : null;
         });
 
-        public void OpenFileLocation(string filePath)
-        {
-            string selectPath = filePath.Replace("/", "\\");
-            Process.Start("explorer.exe", $"/select,\"{selectPath}\"");
-        }
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, PreserveSig = false)]
+        private static extern void SHParseDisplayName(string path, IntPtr bindContext, out IntPtr item,
+            uint requestedAttributes, IntPtr attributes);
 
-        public void OpenFolder(string folderPath) =>
-            Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { Path.GetFullPath(folderPath) } });
+        [DllImport("shell32.dll", ExactSpelling = true, PreserveSig = false)]
+        private static extern void SHOpenFolderAndSelectItems(IntPtr item, uint count, IntPtr children, uint flags);
+
+        public Task OpenFileLocationAsync(string filePath) => OpenInExplorerAsync(filePath, selectFile: true);
+        public Task OpenFolderAsync(string folderPath) => OpenInExplorerAsync(folderPath, selectFile: false);
+
+        private async Task OpenInExplorerAsync(string input, bool selectFile)
+        {
+            // Concurrent shell requests can each create a window before the first one is registered.
+            await explorerGate.WaitAsync();
+            try
+            {
+                await RunSta(() =>
+                {
+                    string path = Path.GetFullPath(input);
+                    if (selectFile && Path.Exists(path))
+                    {
+                        SHParseDisplayName(path, IntPtr.Zero, out IntPtr item, 0, IntPtr.Zero);
+                        try { SHOpenFolderAndSelectItems(item, 0, IntPtr.Zero, 0); }
+                        finally { Marshal.FreeCoTaskMem(item); }
+                    }
+                    else
+                    {
+                        string? folder = selectFile ? Path.GetDirectoryName(path) : path;
+                        if (!Directory.Exists(folder))
+                            throw new DirectoryNotFoundException(folder ?? path);
+
+                        using var process = Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true, Verb = "open" });
+                    }
+                    return true;
+                });
+            }
+            finally
+            {
+                explorerGate.Release();
+            }
+        }
 
         public void OpenUrl(string url) =>
             Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
@@ -213,7 +249,7 @@ namespace Segra.Backend.Platform.Windows
         // WinForms dialogs and clipboard require an STA thread.
         private static Task<T> RunSta<T>(Func<T> func)
         {
-            var tcs = new TaskCompletionSource<T>();
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
             var thread = new Thread(() =>
             {
                 try { tcs.SetResult(func()); }

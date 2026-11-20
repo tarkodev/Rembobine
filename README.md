@@ -15,6 +15,8 @@ focused on gameplay screenshots and more control over recording and playback.
   including when several files change at once.
 - [ ] Refresh thumbnails when a video or screenshot is edited in place by another app. Update the displayed
   duration when a video is trimmed.
+- [x] Reuse the open File Explorer window for **Open Folder** and **Open File Location** on Windows.
+  Opening a file location selects the requested file in its folder.
 - [x] Add `Segrabi.exe --quit` on Windows for local updates. It requests the same shutdown as **Quit Segrabi**
   in the system tray and waits for the app to exit. It also succeeds if Segrabi is already closed.
 - [x] Add **📷 Screenshots** below **Highlights** and a configurable **Take Screenshot** hotkey. It saves a PNG

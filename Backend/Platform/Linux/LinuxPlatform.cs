@@ -229,16 +229,20 @@ namespace Segra.Backend.Platform.Linux
             return result.Split('|', StringSplitOptions.RemoveEmptyEntries);
         }
 
-        public void OpenFileLocation(string filePath)
+        public Task OpenFileLocationAsync(string filePath)
         {
             // Selecting a file in the manager is desktop-specific; open its containing folder instead.
             string? dir = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(dir))
                 LinuxProcess.Start("xdg-open", $"\"{dir}\"");
+            return Task.CompletedTask;
         }
 
-        public void OpenFolder(string folderPath) =>
+        public Task OpenFolderAsync(string folderPath)
+        {
             Process.Start(new ProcessStartInfo("xdg-open") { ArgumentList = { Path.GetFullPath(folderPath) } });
+            return Task.CompletedTask;
+        }
 
         public void OpenUrl(string url) => LinuxProcess.Start("xdg-open", $"\"{url}\"");
 

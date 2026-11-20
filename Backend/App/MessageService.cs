@@ -258,7 +258,7 @@ namespace Segra.Backend.App
                                 openFileLocationParameterElement.TryGetProperty("FilePath", out JsonElement filePathElement) &&
                                 filePathElement.ValueKind == JsonValueKind.String)
                             {
-                                PlatformServices.Dialogs.OpenFileLocation(filePathElement.GetString()!);
+                                await PlatformServices.Dialogs.OpenFileLocationAsync(filePathElement.GetString()!);
                             }
                             else
                             {
@@ -317,7 +317,7 @@ namespace Segra.Backend.App
                             string? logFilePath = Directory.GetFiles(logDir, "*.log").FirstOrDefault();
                             if (!string.IsNullOrEmpty(logFilePath))
                             {
-                                PlatformServices.Dialogs.OpenFileLocation(logFilePath);
+                                await PlatformServices.Dialogs.OpenFileLocationAsync(logFilePath);
                             }
                             else
                             {
@@ -951,7 +951,7 @@ namespace Segra.Backend.App
 
                 // Empty sections may not have a folder until their first recording or import.
                 Directory.CreateDirectory(sectionFolder);
-                PlatformServices.Dialogs.OpenFolder(Directory.Exists(filterFolder) ? filterFolder! : sectionFolder);
+                await PlatformServices.Dialogs.OpenFolderAsync(Directory.Exists(filterFolder) ? filterFolder! : sectionFolder);
             }
             catch (Exception ex)
             {

@@ -58,8 +58,8 @@ namespace Segra.Backend.Platform
         Task<string?> PickFolderAsync(string description);
         Task<string?> PickFileAsync(string title, string filterDescription, string extension);
         Task<string[]?> PickFilesAsync(string title, string filterDescription, params string[] extensions);
-        void OpenFileLocation(string filePath);
-        void OpenFolder(string folderPath);
+        Task OpenFileLocationAsync(string filePath);
+        Task OpenFolderAsync(string folderPath);
         void OpenUrl(string url);
         void CopyFileToClipboard(string filePath);
     }
