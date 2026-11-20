@@ -10,6 +10,7 @@ interface BookmarkTrackProps {
   duration: number;
   icons: Record<BookmarkType, LucideIcon>;
   label: (type: BookmarkType) => string;
+  screenshotPreviewUrl: (bookmark: Bookmark) => string;
   onSelect: (bookmark: Bookmark, trigger: HTMLElement) => void;
   onDelete?: (id: number) => void;
   fullscreen?: boolean;
@@ -25,17 +26,24 @@ interface MarkerGroup {
   markers: Marker[];
   center: number;
   width: number;
+  pairIndex?: number;
 }
 
-// Lay out the actual button footprints. Growing a single marker into a count badge
-// can also make it overlap its neighbour on the left.
+const MARKER_WIDTH = 22;
+const PAIR_GAP = 4;
+const PAIR_WIDTH = MARKER_WIDTH * 2 + PAIR_GAP;
+const PREVIEW_WIDTH = 160;
+
+// Reserve the entire footprint before placing neighbouring markers.
 function groupMarkers(markers: Marker[], width: number, duration: number): MarkerGroup[] {
-  const groups: { first: number; last: number; center: number; width: number }[] = [];
+  const groups: { first: number; last: number; center: number; width: number; pair: boolean }[] =
+    [];
   for (let last = 0; last < markers.length; last++) {
     let first = last;
     while (true) {
       const count = last - first + 1;
-      const size = count === 1 ? 22 : 27 + String(count).length * 7;
+      const pair = count === 2 && width >= PAIR_WIDTH;
+      const size = pair ? PAIR_WIDTH : count === 1 ? MARKER_WIDTH : 27 + String(count).length * 7;
       const middleTime = (markers[first].time + markers[last].time) / 2;
       const center = Math.max(
         size / 2,
@@ -43,18 +51,23 @@ function groupMarkers(markers: Marker[], width: number, duration: number): Marke
       );
       const previous = groups[groups.length - 1];
       if (!previous || center - size / 2 >= previous.center + previous.width / 2 + 2) {
-        groups.push({ first, last, center, width: size });
+        groups.push({ first, last, center, width: size, pair });
         break;
       }
       groups.pop();
       first = previous.first;
     }
   }
-  return groups.map(({ first, last, center, width }) => ({
-    markers: markers.slice(first, last + 1),
-    center,
-    width,
-  }));
+  return groups.flatMap(({ first, last, center, width, pair }): MarkerGroup[] => {
+    const members = markers.slice(first, last + 1);
+    if (!pair) return [{ markers: members, center, width }];
+    return members.map((marker, index) => ({
+      markers: [marker],
+      center: center + (index - 0.5) * (MARKER_WIDTH + PAIR_GAP),
+      width: MARKER_WIDTH,
+      pairIndex: index,
+    }));
+  });
 }
 
 export default memo(function BookmarkTrack({
@@ -62,6 +75,7 @@ export default memo(function BookmarkTrack({
   duration,
   icons,
   label,
+  screenshotPreviewUrl,
   onSelect,
   onDelete,
   fullscreen = false,
@@ -70,8 +84,20 @@ export default memo(function BookmarkTrack({
   const panel = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<number>(undefined);
   const panelId = useId();
+  const previewId = useId();
   const [width, setWidth] = useState(0);
-  const [hovered, setHovered] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<{ id: number; anchor?: DOMRect } | null>(null);
+  const anchor = hovered?.anchor;
+  useEffect(() => {
+    if (!anchor) return;
+    const dismiss = () => setHovered(null);
+    window.addEventListener('resize', dismiss);
+    document.addEventListener('scroll', dismiss, true);
+    return () => {
+      window.removeEventListener('resize', dismiss);
+      document.removeEventListener('scroll', dismiss, true);
+    };
+  }, [anchor]);
   const [expanded, setExpanded] = useState<{
     id: number;
     trigger: HTMLButtonElement;
@@ -203,7 +229,7 @@ export default memo(function BookmarkTrack({
           <span
             key={bookmark.id}
             aria-hidden="true"
-            className={`absolute bottom-0 h-[5px] border-l transition-colors ${hovered === bookmark.id ? 'z-10 bg-[#efaf2b] border-[#efaf2b]' : 'bg-[#efaf2b]/30 border-[#efaf2b]/60'}`}
+            className={`absolute bottom-0 h-[5px] border-l transition-colors ${hovered?.id === bookmark.id ? 'z-10 bg-[#efaf2b] border-[#efaf2b]' : 'bg-[#efaf2b]/30 border-[#efaf2b]/60'}`}
             style={{
               left: `${(start / duration) * 100}%`,
               width: `${((time - start) / duration) * 100}%`,
@@ -214,6 +240,14 @@ export default memo(function BookmarkTrack({
       {groups.map((group) => {
         const first = group.markers[0];
         const multiple = group.markers.length > 1;
+        const paired = group.pairIndex !== undefined;
+        const hasPreview = paired && first.bookmark.type === BookmarkType.ScreenshotSaved;
+        const preview = hasPreview && hovered?.id === first.bookmark.id ? anchor : undefined;
+        const highlight = (trigger: HTMLButtonElement) =>
+          setHovered({
+            id: first.bookmark.id,
+            anchor: hasPreview ? trigger.getBoundingClientRect() : undefined,
+          });
         const Icon = multiple ? Layers : (icons[first.bookmark.type] ?? Skull);
         const description = multiple
           ? `${group.markers.length} bookmarks`
@@ -225,23 +259,26 @@ export default memo(function BookmarkTrack({
             data-bookmark-control
             data-bookmark-group={multiple || undefined}
             aria-label={
-              multiple ? description : `${label(first.bookmark.type)} at ${first.bookmark.time}`
+              multiple
+                ? description
+                : `${label(first.bookmark.type)} at ${first.bookmark.time}${group.pairIndex === undefined ? '' : `, ${group.pairIndex + 1} of 2`}`
             }
-            title={description}
+            title={hasPreview ? undefined : description}
+            aria-describedby={preview ? previewId : undefined}
             aria-expanded={multiple ? expandedGroup === group : undefined}
             aria-controls={multiple && expandedGroup === group ? panelId : undefined}
             className="absolute bottom-0 flex -translate-x-1/2 cursor-pointer flex-col items-center text-[#25272e] pointer-events-auto"
             style={{ left: group.center, width: group.width }}
             onPointerEnter={(e) => {
               if (multiple && e.pointerType === 'mouse') show(group, e.currentTarget);
-              else setHovered(first.bookmark.id);
+              else if (e.pointerType !== 'touch') highlight(e.currentTarget);
             }}
             onPointerLeave={() => {
               setHovered(null);
               if (multiple) closeAfterLeave();
             }}
-            onFocus={() => {
-              if (!multiple) setHovered(first.bookmark.id);
+            onFocus={(e) => {
+              if (!multiple) highlight(e.currentTarget);
             }}
             onBlur={() => setHovered(null)}
             onClick={(e) => {
@@ -266,14 +303,53 @@ export default memo(function BookmarkTrack({
               <Icon size={multiple ? 13 : 16} strokeWidth={2.5} />
               {multiple && group.markers.length}
             </span>
-            <span
-              className={`w-[2px] bg-[#efaf2b] ${fullscreen ? 'h-[9px]' : 'h-3'}`}
-              style={
-                multiple
-                  ? undefined
-                  : { transform: `translateX(${(first.time / duration) * width - group.center}px)` }
-              }
-            />
+            <svg
+              aria-hidden="true"
+              width="2"
+              height={fullscreen ? 9 : 12}
+              className="pointer-events-none overflow-visible"
+            >
+              <line
+                x1="1"
+                y1="0"
+                x2={1 + (multiple ? 0 : (first.time / duration) * width - group.center)}
+                y2="100%"
+                stroke="#efaf2b"
+                strokeWidth={paired ? 1.5 : 2}
+              />
+            </svg>
+            {preview &&
+              createPortal(
+                <div
+                  id={previewId}
+                  role="tooltip"
+                  className="pointer-events-none fixed z-[85] overflow-hidden rounded-md bg-base-300 text-center text-xs text-white shadow-lg ring-1 ring-white/15"
+                  style={{
+                    width: PREVIEW_WIDTH,
+                    left: Math.max(
+                      4,
+                      Math.min(
+                        window.innerWidth - PREVIEW_WIDTH - 4,
+                        preview.left + preview.width / 2 - PREVIEW_WIDTH / 2,
+                      ),
+                    ),
+                    ...(preview.top > 125
+                      ? { bottom: window.innerHeight - preview.top + 5 }
+                      : { top: preview.bottom + 5 }),
+                  }}
+                >
+                  <img
+                    src={screenshotPreviewUrl(first.bookmark)}
+                    alt=""
+                    className="h-[90px] w-full bg-black object-contain"
+                    onError={(e) => {
+                      e.currentTarget.hidden = true;
+                    }}
+                  />
+                  <span className="block py-1 tabular-nums">{formatTimecode(first.time)}</span>
+                </div>,
+                document.body,
+              )}
           </button>
         );
       })}
@@ -315,9 +391,9 @@ export default memo(function BookmarkTrack({
                   aria-label={`${label(bookmark.type)} at ${bookmark.time}`}
                   title={markerDescription(marker)}
                   className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs text-white hover:bg-base-100 focus:bg-base-100"
-                  onPointerEnter={() => setHovered(bookmark.id)}
+                  onPointerEnter={() => setHovered({ id: bookmark.id })}
                   onPointerLeave={() => setHovered(null)}
-                  onFocus={() => setHovered(bookmark.id)}
+                  onFocus={() => setHovered({ id: bookmark.id })}
                   onClick={() => {
                     expanded.trigger.focus({ preventScroll: true });
                     onSelect(bookmark, expanded.trigger);

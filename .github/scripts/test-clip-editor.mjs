@@ -82,6 +82,7 @@ try {
       JSON.stringify({
         airplaneMode: true,
         confirmBeforeDeleting: true,
+        showBookmarksInFullscreen: true,
         defaultMenuItem: "Full Sessions",
         clipClearSegmentsAfterCreatingClip: false,
       }),
@@ -110,6 +111,16 @@ try {
       "Access-Control-Allow-Origin": "*",
       "Accept-Ranges": "bytes",
     };
+    if (
+      url.searchParams.get("input")?.endsWith(".png") ||
+      url.pathname === "/api/thumbnail"
+    ) {
+      return route.fulfill({
+        headers,
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="9"><rect width="16" height="9" fill="blue"/></svg>',
+      });
+    }
     if (
       url.pathname !== "/api/content" ||
       !url.searchParams.get("input")?.endsWith(".mp4")
@@ -300,9 +311,118 @@ try {
   await page.locator('[data-content-id="session"]').click();
   await options.click();
   assert.ok(await page.getByRole("radio", { name: "Combined" }).isChecked());
+  await page.keyboard.press("Escape");
+
+  // Two captures share the first timestamp, two are slightly apart, three share the last.
+  const times = [
+    "00:00:00",
+    "00:00:00",
+    "00:00:04.000",
+    "00:00:04.016",
+    "00:00:12",
+    "00:00:12",
+    "00:00:12",
+  ];
+  await page.evaluate(
+    ({ session, times }) => {
+      const screenshots = times.map((_, id) => ({
+        mediaId: String(id),
+        fileName: id + ".png",
+        filePath: "X:/" + id + ".png",
+        title: "Capture " + id,
+        game: session.game,
+        isImported: false,
+        createdAt: session.createdAt,
+        fileSizeBytes: 200,
+      }));
+      const bookmarks = times.map((time, id) => ({
+        id,
+        time,
+        type: "ScreenshotSaved",
+        mediaId: id === 3 ? undefined : String(id),
+      }));
+      bookmarks.push(
+        { id: 20, time: "00:00:08", type: "ScreenshotSaved" },
+        { id: 21, time: "00:00:08", type: "ClipSaved" },
+      );
+      window.dispatchEvent(
+        new CustomEvent("websocket-message", {
+          detail: {
+            method: "State",
+            content: { content: [{ ...session, bookmarks }], screenshots },
+          },
+        }),
+      );
+    },
+    { session, times },
+  );
+  for (const fullscreen of [false, true]) {
+    if (fullscreen) {
+      await player.hover();
+      await button("Enter Fullscreen").click();
+    }
+    const pairButton = (i) =>
+      button(`Screenshot Saved at ${times[i]}, ${(i % 2) + 1} of 2`).first();
+    for (let i = 0; i < 4; i++) {
+      const marker = pairButton(i);
+      if (i === 0) await marker.focus();
+      else await marker.hover();
+      const preview = page.getByRole("tooltip");
+      const img = preview.locator("img");
+      await img.evaluate((el) => el.decode());
+      const url = new URL(await img.getAttribute("src"));
+      assert.equal(
+        url.searchParams.get("input"),
+        i === 3 ? "X:/source.mp4" : `X:/${i}.png`,
+      );
+      if (i === 3) assert.equal(url.searchParams.get("time"), "4.016");
+      assert.equal(
+        await preview.innerText(),
+        i < 2 ? "00:00.000" : times[i].slice(3),
+      );
+      const footprint = await marker.evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        const track = el.parentElement.getBoundingClientRect();
+        const line = el.querySelector("line");
+        const tip = new DOMPoint(
+          line.x2.baseVal.value,
+          line.y2.baseVal.value,
+        ).matrixTransform(line.getScreenCTM());
+        return {
+          left: rect.left,
+          start: track.left,
+          width: track.width,
+          tip: tip.x,
+        };
+      });
+      const seconds = Number(times[i].split(":").pop());
+      assert.ok(
+        Math.abs(
+          footprint.tip - footprint.start - (footprint.width * seconds) / 12,
+        ) < 1,
+      );
+      assert.ok(footprint.left >= footprint.start - 1);
+      if (i % 2 === 1) {
+        const previous = await pairButton(i - 1).boundingBox();
+        assert.ok(footprint.left >= previous.x + previous.width + 2);
+      }
+      await marker.click();
+      await page.waitForFunction((t) => {
+        const v = document.querySelector("video");
+        return v.paused && Math.abs(v.currentTime - t) < 0.001;
+      }, seconds);
+      await page.keyboard.press("Escape");
+    }
+    await button("Clip Saved at 00:00:08, 2 of 2").first().waitFor();
+    await button("3 bookmarks").first().hover();
+    const grouped = page.getByRole("group", { name: "Overlapping bookmarks" });
+    await grouped.waitFor();
+    assert.equal(await grouped.getByRole("button").count(), 3);
+    await page.keyboard.press("Escape");
+  }
   assert.deepEqual(errors, []);
   console.log(
-    "Classic clip editor passed, including Escape in menus, a dialog, fullscreen and linked media.",
+    "Clip editor, Escape navigation and overlapping screenshot previews passed in both player layouts.",
   );
 } finally {
   await browser?.close();

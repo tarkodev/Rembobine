@@ -3,7 +3,7 @@ import { Content, BookmarkType, Segment, Bookmark } from '../Models/types';
 import { sendMessageToBackend } from '../Utils/MessageUtils';
 import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
 import { useAppState } from '../Context/AppStateContext';
-import { contentTypeToFolderName } from '../Utils/FileUtils';
+import { contentTypeToFolderName, getContentFileUrl } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
 import { consumeEscape } from '../Utils/KeyboardUtils';
@@ -154,10 +154,11 @@ function getIconMapping(igdbId?: number): Record<BookmarkType, LucideIcon> {
   return DEFAULT_ICON_MAPPING;
 }
 
-// Fetches a video thumbnail from the backend for a specific timestamp
+const thumbnailAtTimeUrl = (videoPath: string, time: number) =>
+  `http://localhost:2222/api/thumbnail?input=${encodeURIComponent(videoPath)}&time=${time}`;
+
 const fetchThumbnailAtTime = async (videoPath: string, timeInSeconds: number): Promise<string> => {
-  const url = `http://localhost:2222/api/thumbnail?input=${encodeURIComponent(videoPath)}&time=${timeInSeconds}`;
-  const response = await fetch(url);
+  const response = await fetch(thumbnailAtTimeUrl(videoPath, timeInSeconds));
 
   if (!response.ok) {
     throw new Error(`Failed to fetch thumbnail: ${response.statusText}`);
@@ -2105,6 +2106,15 @@ export default function VideoComponent({ video }: { video: Content }) {
       bookmark.mediaId ? media.get(`${bookmark.type}:${bookmark.mediaId}`) : undefined;
   }, [appState.content, appState.screenshots]);
 
+  const screenshotPreviewUrl = useCallback(
+    (bookmark: Bookmark) => {
+      const media = getBookmarkMedia(bookmark);
+      if (media?.type === 'screenshot') return getContentFileUrl(media.screenshot.filePath);
+      return thumbnailAtTimeUrl(video.filePath, timeStringToSeconds(bookmark.time)) + '&width=320';
+    },
+    [getBookmarkMedia, video.filePath],
+  );
+
   const timelineBookmarks = useMemo(() => {
     if (!video.id.startsWith('live-')) return video.bookmarks;
     const recording = appState.recording;
@@ -2524,6 +2534,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                       duration={duration}
                       icons={bookmarkIcons}
                       label={bookmarkLabel}
+                      screenshotPreviewUrl={screenshotPreviewUrl}
                       onSelect={selectBookmark}
                       fullscreen
                     />
@@ -2772,6 +2783,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                   duration={duration}
                   icons={bookmarkIcons}
                   label={bookmarkLabel}
+                  screenshotPreviewUrl={screenshotPreviewUrl}
                   onSelect={selectBookmark}
                   onDelete={handleDeleteBookmark}
                 />
