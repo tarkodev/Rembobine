@@ -80,7 +80,11 @@ export default function Screenshots({ selectedScreenshot, onSelect }: Screenshot
   const selected = filtered[selectedIndex];
 
   useEffect(() => {
-    if (selectedScreenshot && selectedScreenshot.filePath !== saved?.filePath)
+    if (
+      selectedScreenshot &&
+      (selectedScreenshot.filePath !== saved?.filePath ||
+        selectedScreenshot.selectionId !== saved?.selectionId)
+    )
       onSelect(saved ?? null);
   }, [selectedScreenshot, saved, onSelect]);
 
@@ -139,7 +143,7 @@ export default function Screenshots({ selectedScreenshot, onSelect }: Screenshot
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 min-[90rem]:grid-cols-4 min-[112.5rem]:grid-cols-5">
           {filtered.map((screenshot) => (
             <article
-              key={screenshot.filePath}
+              key={screenshot.selectionId ?? screenshot.filePath}
               className="card card-compact w-full cursor-pointer bg-base-300 text-gray-300"
               onContextMenu={(event) => {
                 if (event.target instanceof HTMLInputElement) return;

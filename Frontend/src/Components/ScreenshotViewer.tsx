@@ -44,6 +44,7 @@ export default function ScreenshotViewer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fullscreenRef = useRef(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const imageKey = screenshot.selectionId ?? screenshot.filePath;
   const {
     stageRef,
     viewportRef,
@@ -56,7 +57,7 @@ export default function ScreenshotViewer({
     onPointerDown,
     onPointerMove,
     endPan,
-  } = useScreenshotViewport(screenshot.filePath);
+  } = useScreenshotViewport(imageKey);
 
   useLayoutEffect(() => {
     setImageFailed(false);
@@ -124,7 +125,7 @@ export default function ScreenshotViewer({
             onBack={onBack}
           />
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <ScreenshotViewerActions key={screenshot.filePath} screenshot={screenshot} />
+            <ScreenshotViewerActions key={imageKey} screenshot={screenshot} />
           </div>
         </header>
       )}
@@ -156,7 +157,7 @@ export default function ScreenshotViewer({
               </div>
             ) : (
               <img
-                key={screenshot.filePath}
+                key={imageKey}
                 ref={imageRef}
                 className="block h-full w-full select-none object-contain"
                 style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
@@ -231,7 +232,7 @@ export default function ScreenshotViewer({
             </div>
           )}
           <OpenFullSessionButton
-            key={screenshot.filePath}
+            key={imageKey}
             bookmarkType={BookmarkType.ScreenshotSaved}
             mediaId={getScreenshotMediaId(screenshot)}
             previewUrl={getContentFileUrl(screenshot.filePath)}

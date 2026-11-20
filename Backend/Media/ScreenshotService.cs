@@ -413,18 +413,19 @@ namespace Segra.Backend.Media
                     // For frames captured in the same second, migrate the earliest legacy name first.
                     var files = EnumerateImages(directory).OrderBy(file => file.Name, StringComparer.Ordinal)
                         .ThenBy(file => file.FullName, StringComparer.Ordinal).ToArray();
-                    // Unlinked images have no bookmark ID. Keep their viewer selection across physical renames.
+                    // Each image keeps its UI identity across a rename, even when two files share a legacy bookmark ID.
                     var selections = AppState.Instance.Screenshots.Where(s => s.SelectionId.HasValue)
-                        .ToDictionary(s => s.FilePath, s => s.SelectionId!.Value, StringComparer.FromComparison(PathComparison));
+                        .ToDictionary(s => s.FilePath, StringComparer.FromComparison(PathComparison));
                     if (renamed is { } move && selections.Remove(move.From, out var selection))
                         selections[move.To] = selection;
                     var screenshots = files.Select(file =>
                     {
                         string path = file.FullName;
                         var item = ReadScreenshot(file, directory, titles, games, captures, legacyGames);
-                        return item.MediaId != null ? item : item with
+                        return item with
                         {
-                            SelectionId = selections.TryGetValue(path, out var id) ? id : Guid.NewGuid()
+                            SelectionId = selections.TryGetValue(path, out var previous) && previous.MediaId == item.MediaId
+                                ? previous.SelectionId : Guid.NewGuid()
                         };
                     })
                         .OrderByDescending(screenshot => screenshot.CreatedAt)

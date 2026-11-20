@@ -18,7 +18,7 @@ interface View extends Point {
 const FITTED_VIEW: View = { scale: 1, x: 0, y: 0 };
 export const MAX_SCREENSHOT_ZOOM = 4;
 
-export function useScreenshotViewport(filePath: string) {
+export function useScreenshotViewport(imageKey: string) {
   const stageRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -81,7 +81,7 @@ export function useScreenshotViewport(filePath: string) {
     setImageRatio(null);
     setIsPanning(false);
     setView(FITTED_VIEW);
-  }, [filePath]);
+  }, [imageKey]);
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
