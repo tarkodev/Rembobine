@@ -6,6 +6,7 @@ export function getBookmarkPlaybackStart(
   session: Content,
   settings: Settings,
 ): number {
+  if (type === BookmarkType.ScreenshotSaved) return time;
   if (type === BookmarkType.Manual) return Math.max(0, time - 10);
 
   const game = settings.games.find(

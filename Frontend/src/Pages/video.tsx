@@ -2123,8 +2123,12 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   const seekToBookmark = (bookmark: Bookmark) => {
     const seekTo = bookmarkStartTime(bookmark);
+    const player = videoRef.current;
+    if (player) {
+      if (bookmark.type === BookmarkType.ScreenshotSaved) player.pause();
+      player.currentTime = seekTo;
+    }
     setCurrentTime(seekTo);
-    if (videoRef.current) videoRef.current.currentTime = seekTo;
   };
 
   const selectBookmark = (bookmark: Bookmark, trigger: HTMLElement) => {
