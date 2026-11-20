@@ -185,6 +185,7 @@ export interface Bookmark {
   mediaId?: string;
   clipOffset?: number;
   clipStart?: string;
+  inherited?: boolean;
 }
 
 export interface Recording {
@@ -588,7 +589,7 @@ export const initialSettings: Settings = {
   showAudioWaveformInTimeline: true,
   showBookmarksInFullscreen: true,
   showVideoNavigation: true,
-  showClipToolsOnClips: false,
+  showClipToolsOnClips: true,
   showImportInClipsAndHighlights: false,
   showLiveSessionCard: true,
   enableSeparateAudioTracks: false,
@@ -645,6 +646,8 @@ export interface Segment {
   type: ContentType;
   startTime: number;
   endTime: number;
+  // Identifies a reopened excerpt so repeated adjustments resume the same draft.
+  adjustedFrom?: { mediaId: string; offset: number };
   thumbnailDataUrl?: string;
   isLoading: boolean;
   fileName: string;
@@ -662,6 +665,9 @@ export interface SegmentCardProps {
   moveCard: (dragIndex: number, hoverIndex: number) => void;
   formatTime: (time: number) => string;
   isHovered: boolean;
+  selected: boolean;
+  selectable: boolean;
+  onSelect: (segment: Segment) => void;
   segmentHover: HoverIntentHandlers<number>;
   removeSegment: (id: number) => void;
   audioTrackNames?: string[];

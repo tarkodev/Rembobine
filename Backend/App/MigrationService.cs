@@ -236,8 +236,61 @@ internal static class MigrationService
             new("0021_non_deprecated_nvenc_ids", Apply_0021_NonDeprecatedNvencIds),
             new("0022_backfill_played_games", Apply_0022_BackfillPlayedGames),
             new("0023_clip_bookmarks_at_end", Apply_0023_ClipBookmarksAtEnd),
-            new("0024_delete_unused_recording_folders", DeleteEmptyVideoGameFolders)
+            new("0024_delete_unused_recording_folders", DeleteEmptyVideoGameFolders),
+            new("0025_restore_clip_events", Apply_0025_RestoreClipEvents)
         ];
+    }
+
+    private static void Apply_0025_RestoreClipEvents()
+    {
+        var videos = new List<Content>();
+        ForEachVideo("0025", _ => true, videos.Add);
+        var links = videos.SelectMany(source => source.GetBookmarks()
+            .Where(b => b.Type == BookmarkType.ClipSaved && !b.Inherited && b.MediaId != null && b.ClipStart != null)
+            .Select(link => (Source: source, Link: link))).ToLookup(p => p.Link.MediaId!);
+        var clips = videos.Where(c => c.Type == Content.ContentType.Clip && links.Contains(c.Id)).ToList();
+        var seen = new HashSet<string>();
+        int done = 0;
+        ReportProgress(0, clips.Count, "clips");
+        foreach (var clip in clips) Restore(clip);
+
+        void Restore(Content clip)
+        {
+            if (!seen.Add(clip.Id)) return;
+            var ranges = links[clip.Id];
+            foreach (var (source, _) in ranges)
+                if (source.Type == Content.ContentType.Clip && links.Contains(source.Id)) Restore(source);
+
+            if (ClipBookmarks.MissingLegacyEvents(clip, ranges).Count > 0)
+            {
+                var path = FolderNames.GetMetadataFilePath(clip.Type, clip.Id);
+                var updated = ContentService.UpdateMetadataFile(path, current =>
+                {
+                    current.Bookmarks ??= [];
+                    current.Bookmarks.AddRange(ClipBookmarks.MissingLegacyEvents(current, ranges));
+                }).GetAwaiter().GetResult();
+                if (updated == null) throw new IOException($"Could not restore clip bookmarks in {path}");
+                clip.Bookmarks = updated.Bookmarks;
+                // Legacy filenames and Explorer dates can be the only remaining record of when
+                // the clip was made. Embedding the new chapters may replace the MP4.
+                var file = new FileInfo(updated.FilePath);
+                DateTime modified = file.LastWriteTimeUtc;
+                DateTime created = file.CreationTimeUtc;
+                try
+                {
+                    EmbeddedMetadataService.EmbedAsync(updated).GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    if (!updated.ExportedAt.HasValue && File.Exists(updated.FilePath))
+                    {
+                        if (OperatingSystem.IsWindows()) File.SetCreationTimeUtc(updated.FilePath, created);
+                        File.SetLastWriteTimeUtc(updated.FilePath, modified);
+                    }
+                }
+            }
+            ReportProgress(++done, clips.Count, "clips");
+        }
     }
 
     private static void Apply_0023_ClipBookmarksAtEnd()

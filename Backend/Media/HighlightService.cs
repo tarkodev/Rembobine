@@ -31,7 +31,7 @@ namespace Segra.Backend.Media
                     return;
                 }
 
-                List<Bookmark> highlightBookmarks = content.Bookmarks
+                List<Bookmark> highlightBookmarks = content.GetBookmarks()
                     .Where(b => b.Type.IncludeInHighlight())
                     .OrderBy(b => b.Time)
                     .ToList();
@@ -50,8 +50,10 @@ namespace Segra.Backend.Media
                 var segments = highlightBookmarks.Select(b => new TimeSegment
                 {
                     StartTime = Math.Max(0, b.Time.TotalSeconds - paddingBefore),
-                    EndTime = b.Time.TotalSeconds + paddingAfter
-                }).ToList();
+                    EndTime = content.Duration > TimeSpan.Zero
+                        ? Math.Min(content.Duration.TotalSeconds, b.Time.TotalSeconds + paddingAfter)
+                        : b.Time.TotalSeconds + paddingAfter
+                }).Where(s => s.EndTime > s.StartTime).ToList();
 
                 var mergedSegments = MergeOverlappingSegments(segments);
                 Log.Information($"Merged {segments.Count} segments into {mergedSegments.Count} clips");
@@ -73,21 +75,43 @@ namespace Segra.Backend.Media
                 Directory.CreateDirectory(outputFolder);
 
                 string outputFileName = $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4";
-                string outputFilePath = PathUtils.Combine(outputFolder, outputFileName);
+                string outputFilePath = ClipService.ReserveOutputFilePath(PathUtils.Combine(outputFolder, outputFileName));
 
                 progressCallback?.Invoke(10, "Extracting clips...");
 
                 // Extract and concatenate segments using stream copy - preserve source audio track names
+                using var bookmarks = new ClipBookmarks();
+                var excerpts = new List<Segment>();
                 bool success = await ExtractAndConcatenateSegments(
                     inputFilePath,
                     outputFilePath,
                     mergedSegments,
                     (progress, message) => progressCallback?.Invoke(10 + (int)(progress * 80), message),
-                    content.AudioTrackNames
+                    content.AudioTrackNames,
+                    (origin, duration, offset) =>
+                    {
+                        double start = Math.Max(0, origin);
+                        double end = origin + duration;
+                        if (content.Duration > TimeSpan.Zero) end = Math.Min(end, content.Duration.TotalSeconds);
+                        if (end <= start) return;
+                        var excerpt = new Segment
+                        {
+                            ContentId = content.Id,
+                            FileName = content.FileName,
+                            FilePath = content.FilePath,
+                            Type = content.Type.ToString(),
+                            Game = content.Game ?? "Unknown",
+                            StartTime = start,
+                            EndTime = end
+                        };
+                        bookmarks.Track(excerpt, offset + start - origin);
+                        excerpts.Add(excerpt);
+                    }
                 );
 
                 if (!success || !File.Exists(outputFilePath))
                 {
+                    File.Delete(outputFilePath);
                     Log.Error("Failed to create highlight video");
                     progressCallback?.Invoke(-1, "Failed to create highlight");
                     return;
@@ -100,7 +124,9 @@ namespace Segra.Backend.Media
 
                 // Create metadata, thumbnail, and waveform.
                 // Highlights use stream-copy extract+concat, so they preserve the source's audio tracks.
-                string? highlightId = await ContentService.CreateMetadataFile(outputFilePath, Content.ContentType.Highlight, content.Game!, null, content.Title, igdbId: content.IgdbId, audioTrackNames: content.AudioTrackNames, audioTrackTypes: content.AudioTrackTypes, gameExePath: content.GameExePath);
+                string? highlightId = await ContentService.CreateMetadataFile(outputFilePath, Content.ContentType.Highlight, content.Game!, bookmarks.InOutput(excerpts), content.Title, igdbId: content.IgdbId, audioTrackNames: content.AudioTrackNames, audioTrackTypes: content.AudioTrackTypes, gameExePath: content.GameExePath);
+                if (highlightId == null) throw new IOException("Could not save highlight metadata");
+                await bookmarks.SaveAsync([(highlightId, excerpts)]);
 
                 progressCallback?.Invoke(95, "Creating thumbnail...");
                 await ContentService.CreateThumbnail(outputFilePath, Content.ContentType.Highlight, highlightId);
@@ -137,7 +163,8 @@ namespace Segra.Backend.Media
             string outputFilePath,
             List<TimeSegment> segments,
             Action<double, string>? progressCallback = null,
-            List<string>? audioTrackNames = null)
+            List<string>? audioTrackNames = null,
+            Action<double, double, double>? onExtractedRange = null)
         {
             if (!FFmpegService.FFmpegExists())
             {
@@ -152,6 +179,8 @@ namespace Segra.Backend.Media
             }
 
             List<string> tempFiles = new();
+            var concatLines = new List<string>();
+            double outputOffset = 0;
             string? concatFilePath = null;
             bool outputExisted = File.Exists(outputFilePath);
             bool succeeded = false;
@@ -166,6 +195,7 @@ namespace Segra.Backend.Media
                 {
                     var segment = segments[i];
                     string tempFile = PathUtils.Combine(Path.GetTempPath(), $"highlight_segment_{Guid.NewGuid()}.mp4");
+                    tempFiles.Add(tempFile);
                     double segmentDuration = segment.EndTime - segment.StartTime;
 
                     progressCallback?.Invoke(processedDuration / totalDuration, $"Extracting clip {i + 1} of {segments.Count}");
@@ -203,10 +233,22 @@ namespace Segra.Backend.Media
                     if (!File.Exists(tempFile))
                     {
                         Log.Error($"Failed to extract segment {i + 1}");
-                        continue;
+                        return false;
                     }
 
-                    tempFiles.Add(tempFile);
+                    concatLines.Add(FFmpegService.BuildConcatListLine(tempFile));
+                    if (onExtractedRange != null)
+                    {
+                        // A stream copy starts at the preceding keyframe. Locate the same packet in
+                        // the input and output to account for preroll and the MP4 timestamp shift.
+                        double sourcePts = await FirstVideoPacketTime(inputFilePath, segment.StartTime);
+                        double outputPts = await FirstVideoPacketTime(tempFile, 0);
+                        double length = (await FFmpegService.GetVideoDuration(tempFile)).TotalSeconds;
+                        if (length <= 0) throw new InvalidDataException("Could not read highlight segment duration");
+                        onExtractedRange(sourcePts - outputPts, length, outputOffset);
+                        concatLines.Add(FormattableString.Invariant($"duration {length:F7}"));
+                        outputOffset += length;
+                    }
                     processedDuration += segmentDuration;
                 }
 
@@ -228,7 +270,6 @@ namespace Segra.Backend.Media
                 }
 
                 concatFilePath = PathUtils.Combine(Path.GetTempPath(), $"highlight_concat_{Guid.NewGuid()}.txt");
-                var concatLines = tempFiles.Select(FFmpegService.BuildConcatListLine);
                 await File.WriteAllLinesAsync(concatFilePath, concatLines);
 
                 var concatArguments = new List<string>
@@ -294,6 +335,20 @@ namespace Segra.Backend.Media
                     catch { /* ignore cleanup errors */ }
                 }
             }
+        }
+
+        private static async Task<double> FirstVideoPacketTime(string filePath, double seek)
+        {
+            var args = new List<string> { "-loglevel", "error", "-copyts", "-start_at_zero" };
+            if (seek > 0) args.AddRange(["-ss", seek.ToString(CultureInfo.InvariantCulture)]);
+            args.AddRange(["-i", filePath, "-map", "0:v:0", "-frames:v", "1", "-c", "copy",
+                "-avoid_negative_ts", "disabled", "-f", "framecrc", "pipe:1"]);
+            string output = System.Text.Encoding.ASCII.GetString(await FFmpegService.RunAndCaptureOutput(args));
+            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var timeBase = lines.First(l => l.StartsWith("#tb 0: ", StringComparison.Ordinal))[7..].Split('/');
+            var packet = lines.First(l => l[0] != '#').Split(',');
+            return double.Parse(packet[2], CultureInfo.InvariantCulture) *
+                double.Parse(timeBase[0], CultureInfo.InvariantCulture) / double.Parse(timeBase[1], CultureInfo.InvariantCulture);
         }
 
         /// <summary>

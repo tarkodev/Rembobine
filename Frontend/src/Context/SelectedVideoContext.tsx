@@ -2,7 +2,13 @@ import { createContext, useContext, useState, ReactNode, useCallback } from 'rea
 import type { Content, Screenshot } from '../Models/types';
 
 export type LinkedMedia =
-  | { type: 'video'; video: Content; previewUrl?: string }
+  | {
+      type: 'video';
+      video: Content;
+      previewUrl?: string;
+      startPaused?: boolean;
+      playlist?: string[];
+    }
   | { type: 'screenshot'; screenshot: Screenshot };
 
 export interface PlaybackPosition {
@@ -47,13 +53,16 @@ export const SelectedVideoProvider = ({ children }: { children: ReactNode }) => 
       setSelection((current) => ({
         video: media.type === 'video' ? media.video : null,
         screenshot: media.type === 'screenshot' ? media.screenshot : undefined,
-        playlist: [],
+        playlist: media.type === 'video' ? (media.playlist ?? []) : [],
         resume:
           startTime === undefined
             ? undefined
             : {
                 time: startTime,
-                paused: playback?.paused ?? true,
+                paused:
+                  (media.type === 'video' ? media.startPaused : undefined) ??
+                  playback?.paused ??
+                  true,
                 previewUrl: media.type === 'video' ? media.previewUrl : undefined,
               },
         previous: playback ? { ...current, resume: playback } : current,

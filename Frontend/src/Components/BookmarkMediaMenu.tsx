@@ -49,6 +49,7 @@ export default function BookmarkMediaMenu({
       role="group"
       aria-label="Bookmark actions"
       data-bookmark-control
+      data-bookmark-popup
       className="fixed z-[80] rounded-lg border border-base-400 bg-base-300 p-1 text-sm shadow-xl"
       style={{
         width,

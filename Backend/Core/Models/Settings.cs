@@ -907,7 +907,7 @@ namespace Segra.Backend.Core.Models
         }
 
         [JsonPropertyName("showClipToolsOnClips")]
-        public bool ShowClipToolsOnClips { get; set; } = false;
+        public bool ShowClipToolsOnClips { get; set; } = true;
 
         [JsonPropertyName("showImportInClipsAndHighlights")]
         public bool ShowImportInClipsAndHighlights { get; set; } = false;

@@ -12,6 +12,9 @@ namespace Segra.Backend.Core.Models
         public TimeSpan Time { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? MediaId { get; set; }
+        // A link carried into an excerpt is navigable, but does not identify the excerpt's source.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Inherited { get; set; }
         // Time marks the end of the excerpt. ClipOffset is its start in the finished clip, in seconds.
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? ClipOffset { get; set; }
@@ -37,6 +40,7 @@ namespace Segra.Backend.Core.Models
             Type = Type,
             Subtype = Subtype,
             MediaId = MediaId,
+            Inherited = Inherited,
             Time = time,
             ClipOffset = ClipOffset,
             ClipStart = ClipStart + (time - Time)

@@ -14,3 +14,12 @@ export function timeStringToSeconds(timeStr: string): number {
     : [0, Number(dayHours)];
   return ((days * 24 + hours) * 60 + Number(minutes)) * 60 + Number(seconds);
 }
+
+export function formatTimecode(seconds: number): string {
+  const totalMs = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds * 1000)) : 0;
+  const hours = Math.floor(totalMs / 3600000);
+  const minutes = String(Math.floor(totalMs / 60000) % 60).padStart(2, '0');
+  const secs = String(Math.floor(totalMs / 1000) % 60).padStart(2, '0');
+  const ms = String(totalMs % 1000).padStart(3, '0');
+  return `${hours > 0 ? `${String(hours).padStart(2, '0')}:` : ''}${minutes}:${secs}.${ms}`;
+}

@@ -1,3 +1,4 @@
+using Segra.Backend.App;
 using Segra.Backend.Core.Models;
 using Segra.Backend.Shared;
 
@@ -8,11 +9,14 @@ internal sealed class ClipBookmarks : IDisposable
 {
     private sealed record Link(Bookmark Bookmark, string? ContentId, string? LivePath, Recording.PendingMediaBookmark? Pending);
     private readonly Dictionary<Segment, List<Link>> _links = [];
+    private readonly Dictionary<Segment, Bookmark[]> _sourceBookmarks = [];
+    private readonly Dictionary<Segment, double> _outputOffsets = [];
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    public void Track(Segment segment)
+    public void Track(Segment segment, double? outputOffset = null)
     {
+        if (outputOffset.HasValue) _outputOffsets[segment] = outputOffset.Value;
         var links = _links[segment] = [];
         var library = AppState.Instance.Content;
         var recording = AppState.Instance.Recording;
@@ -23,19 +27,30 @@ internal sealed class ClipBookmarks : IDisposable
         if (source == null && segment.ContentId?.StartsWith("live-", StringComparison.Ordinal) == true)
         {
             if (recording?.FilePath != null && string.Equals(path, PathUtils.Normalize(recording.FilePath), PathComparison))
+            {
+                _sourceBookmarks[segment] = recording.GetBookmarks().ToArray();
                 links.Add(new(direct, null, path, recording.BeginLinkedBookmark(direct)));
+            }
             else
+            {
+                var finished = library.FirstOrDefault(c => c.Type == Content.ContentType.Session &&
+                    string.Equals(PathUtils.Normalize(c.FilePath), path, PathComparison));
+                var snapshot = MessageService.LiveContent;
+                _sourceBookmarks[segment] = finished?.GetBookmarks() ??
+                    (snapshot?.Id == segment.ContentId ? snapshot.GetBookmarks() : []);
                 links.Add(new(direct, null, path, null));
+            }
             return;
         }
         if (source == null) return;
+        _sourceBookmarks[segment] = source.GetBookmarks();
         links.Add(new(direct, source.Id, null, null));
 
-        if (source.Type is not (Content.ContentType.Buffer or Content.ContentType.Clip)) return;
-        foreach (var session in library.Where(c => c.Type == Content.ContentType.Session))
+        if (source.Type == Content.ContentType.Session) return;
+        foreach (var ancestor in library.Where(c => c.Id != source.Id))
         {
-            foreach (var mark in Project(session.GetBookmarks(), source, segment, session.Duration.TotalSeconds))
-                links.Add(new(mark, session.Id, null, null));
+            foreach (var mark in Project(ancestor.GetBookmarks(), source, segment, ancestor.Duration.TotalSeconds))
+                links.Add(new(mark, ancestor.Id, null, null));
         }
         if (recording?.FilePath != null)
         {
@@ -52,12 +67,12 @@ internal sealed class ClipBookmarks : IDisposable
         ClipOffset = offset
     };
 
-    // Translate an excerpt of a replay or previous clip into the session timeline.
+    // Translate an excerpt into the original recording and any surviving intermediate sources.
     private static IEnumerable<Bookmark> Project(IEnumerable<Bookmark> markers, Content source, Segment segment, double sessionDuration)
     {
         foreach (var origin in markers)
         {
-            if (origin.MediaId != source.Id) continue;
+            if (origin.Inherited || origin.MediaId != source.Id) continue;
             double sessionStart = origin.Time.TotalSeconds;
             double mediaStart, length;
             if (source.GetReplayStart(origin) is TimeSpan replayStart)
@@ -66,7 +81,7 @@ internal sealed class ClipBookmarks : IDisposable
                 length = source.Duration.TotalSeconds;
                 sessionStart = replayStart.TotalSeconds;
             }
-            else if (source.Type == Content.ContentType.Clip && origin.Type == BookmarkType.ClipSaved &&
+            else if (source.Type is Content.ContentType.Clip or Content.ContentType.Highlight && origin.Type == BookmarkType.ClipSaved &&
                      origin.ClipOffset is double offset && origin.ClipStart is TimeSpan clipStart)
             {
                 mediaStart = offset;
@@ -82,13 +97,78 @@ internal sealed class ClipBookmarks : IDisposable
         }
     }
 
+    // Output order is the player's segment order, including repeats and cuts from different sources.
+    private IEnumerable<(Segment Segment, double Offset)> Positions(List<Segment> segments)
+    {
+        double offset = 0;
+        foreach (var segment in segments)
+        {
+            offset = _outputOffsets.GetValueOrDefault(segment, offset);
+            yield return (segment, offset);
+            offset += segment.EndTime - segment.StartTime;
+        }
+    }
+
+    public List<Bookmark> InOutput(List<Segment> segments) => Positions(segments)
+        .SelectMany(p => InRange(_sourceBookmarks.GetValueOrDefault(p.Segment) ?? [],
+            TimeSpan.FromSeconds(p.Segment.StartTime), TimeSpan.FromSeconds(p.Segment.EndTime), TimeSpan.FromSeconds(p.Offset)))
+        .OrderBy(b => b.Time).ToList();
+
+    // A legacy clip may be linked from both a replay and its full session. Keep the
+    // maximum multiplicity of each event, including two real kills on the same frame.
+    internal static List<Bookmark> MissingLegacyEvents(Content clip, IEnumerable<(Content Source, Bookmark Link)> ranges)
+    {
+        static (BookmarkType, BookmarkSubtype?, string?, long) Key(Bookmark b) =>
+            (b.Type, b.Subtype, b.MediaId, (long)Math.Round(b.Time.TotalMilliseconds));
+        var counts = clip.GetBookmarks().GroupBy(Key).ToDictionary(g => g.Key, g => g.Count());
+        var missing = new List<Bookmark>();
+        foreach (var (source, link) in ranges)
+        {
+            if (link.ClipStart is not TimeSpan start || link.ClipOffset is not double offset || !double.IsFinite(offset) || offset < 0)
+                continue;
+            // Other ClipSaved ranges are reverse links and may have been created after this export.
+            var events = InRange(source.GetBookmarks().Where(b => b.Type != BookmarkType.ClipSaved),
+                start, link.Time, TimeSpan.FromSeconds(offset)).Where(b => b.Time < clip.Duration);
+            foreach (var group in events.GroupBy(Key))
+            {
+                int existing = counts.GetValueOrDefault(group.Key);
+                missing.AddRange(group.Skip(existing));
+                counts[group.Key] = Math.Max(existing, group.Count());
+            }
+        }
+        return missing.OrderBy(b => b.Time).ToList();
+    }
+
+    internal static IEnumerable<Bookmark> InRange(IEnumerable<Bookmark> bookmarks, TimeSpan start, TimeSpan end, TimeSpan offset)
+    {
+        foreach (var bookmark in bookmarks)
+        {
+            if (bookmark.Type == BookmarkType.ClipSaved && bookmark.ClipStart is TimeSpan from)
+            {
+                var left = from < start ? start : from;
+                var right = bookmark.Time > end ? end : bookmark.Time;
+                if (right <= left) continue;
+                var excerpt = bookmark.AtTime(right - start + offset);
+                excerpt.ClipStart = left - start + offset;
+                excerpt.ClipOffset += (left - from).TotalSeconds;
+                excerpt.Inherited = true;
+                yield return excerpt;
+            }
+            else if (bookmark.Time >= start && bookmark.Time < end)
+            {
+                var point = bookmark.AtTime(bookmark.Time - start + offset);
+                point.Inherited = bookmark.MediaId != null;
+                yield return point;
+            }
+        }
+    }
+
     public async Task SaveAsync(List<(string Id, List<Segment> Segments)> clips)
     {
         var bySource = new Dictionary<string, List<Bookmark>>();
         foreach (var (clipId, segments) in clips)
         {
-            double offset = 0;
-            foreach (var segment in segments)
+            foreach (var (segment, offset) in Positions(segments))
             {
                 foreach (var link in _links[segment])
                 {
@@ -107,7 +187,6 @@ internal sealed class ClipBookmarks : IDisposable
                         bySource[sourceId] = bookmarks = [];
                     bookmarks.Add(mark);
                 }
-                offset += segment.EndTime - segment.StartTime;
             }
         }
         foreach (var (sourceId, bookmarks) in bySource)

@@ -6,12 +6,13 @@ import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
 import { getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
-import { timeStringToSeconds } from '../Utils/NumberUtils';
+import { formatTimecode, timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
 import type { LinkedMedia } from '../Context/SelectedVideoContext';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useSegments } from '../Context/SegmentsContext';
+import { useClipping } from '../Hooks/useClipping';
 import { useUploads } from '../Context/UploadContext';
 import { useModal } from '../Context/ModalContext';
 import UploadModal from '../Components/UploadModal';
@@ -21,10 +22,10 @@ import { crosshair2Dot, soccerBall } from '@lucide/lab';
 import {
   Trash2,
   Settings,
-  SquarePlus,
   Bookmark as BookmarkIcon,
   BookmarkPlus,
   Clapperboard,
+  ListVideo,
   HeartHandshake,
   Swords,
   Pause,
@@ -47,12 +48,13 @@ import {
 import { Volume1, Volume2, VolumeX, Maximize, Minimize, Check } from 'lucide';
 import { MorphIcon } from 'morphicons/react';
 import SegmentCard from '../Components/SegmentCard';
+import SegmentCutControls, { type CutEdge } from '../Components/SegmentCutControls';
 import { useHoverIntent } from '../Hooks/useHoverIntent';
 import AudioTrackMixer, { AUDIO_TRACK_MENU_CLASS } from '../Components/AudioTrackMixer';
 import { hasCustomAudioMix, toggleTrackInMix } from '../Utils/AudioMixUtils';
 import { useAudioTracks } from '../Hooks/useAudioTracks';
 import { useNativeElementAudio } from '../Hooks/useNativeElementAudio';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Button from '../Components/Button';
 import CopyFileButton from '../Components/CopyFileButton';
 import OpenFullSessionButton from '../Components/OpenFullSessionButton';
@@ -60,6 +62,7 @@ import DeleteMediaButton from '../Components/DeleteMediaButton';
 import MediaInfoBar from '../Components/MediaInfoBar';
 import { getContentGameIcon } from '../Utils/GameIconUtils';
 import BookmarkMediaMenu from '../Components/BookmarkMediaMenu';
+import BookmarkTrack from '../Components/BookmarkTrack';
 import { useDeleteConfirmation } from '../Hooks/useDeleteConfirmation';
 import HevcExtensionWarning from '../Components/HevcExtensionWarning';
 import WebcamOverlay from '../Components/WebcamOverlay';
@@ -175,6 +178,10 @@ export default function VideoComponent({ video }: { video: Content }) {
   );
   const updateSettings = useSettingsUpdater();
   const { uploads } = useUploads();
+  const { latestExport } = useClipping();
+  const exportedClip = latestExport?.sourceIds.includes(video.id)
+    ? appState.content.find((item) => item.id === latestExport.clipIds[0])
+    : undefined;
   const { openModal, closeModal, isModalOpen } = useModal();
   const { setSelectedVideo, playlist, resumePlayback, openLinkedMedia, goBack } =
     useSelectedVideo();
@@ -188,8 +195,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   const prev = index > 0 ? siblings[index - 1] : null;
   const next = index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null;
   const hasPlaylist = settings.showVideoNavigation && siblings.length > 1 && index >= 0;
-  const showClipTools =
-    settings.showClipToolsOnClips || (video.type !== 'Clip' && video.type !== 'Highlight');
 
   // Shift+P / Shift+N, like YouTube playlists
   useEffect(() => {
@@ -212,13 +217,20 @@ export default function VideoComponent({ video }: { video: Content }) {
     segments,
     addSegment,
     updateSegment,
+    setSegmentThumbnail,
     removeSegment,
     updateSegmentsArray,
     clearAllSegments,
+    activeSegmentId,
+    setActiveSegmentId,
   } = useSegments();
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
+  const previewSegmentRef = useRef<Segment | null>(null);
+  const cancelSegmentPreview = useCallback(() => {
+    previewSegmentRef.current = null;
+  }, []);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -450,10 +462,8 @@ export default function VideoComponent({ video }: { video: Content }) {
   const resumeAfterScrubRef = useRef(false);
   const scrubCandidateRef = useRef<number | null>(null);
   const [showNoSegmentsIndicator, setShowNoSegmentsIndicator] = useState(false);
-  const [clipOutputMode, setClipOutputMode] = useState<'combined' | 'separate'>(() => {
-    const saved = localStorage.getItem('segra-clip-output-mode');
-    return saved === 'separate' ? 'separate' : 'combined';
-  });
+  const [segmentListOpen, setSegmentListOpen] = useState<boolean | null>(null);
+  const showSegmentList = segments.length > 0 && (segmentListOpen ?? segments.length > 1);
   const [volume, setVolume] = useState(() => {
     // Initialize volume from localStorage or default to 1
     const savedVolume = localStorage.getItem('segra-volume');
@@ -463,9 +473,6 @@ export default function VideoComponent({ video }: { video: Content }) {
     // Initialize muted state from localStorage or default to false
     return localStorage.getItem('segra-muted') === 'true';
   });
-  useEffect(() => {
-    localStorage.setItem('segra-clip-output-mode', clipOutputMode);
-  }, [clipOutputMode]);
   const [playbackRate, setPlaybackRate] = useState(() => {
     const saved = localStorage.getItem('segra-playbackRate');
     return saved ? parseFloat(saved) : 1;
@@ -502,6 +509,26 @@ export default function VideoComponent({ video }: { video: Content }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
   const [hoveredSegmentId, setHoveredSegmentId] = useState<number | null>(null);
+  const [pendingBound, setPendingBound] = useState<{
+    edge: CutEdge;
+    time: number;
+    thumbnail?: string;
+  } | null>(null);
+  const selectedSegment = useMemo(() => {
+    if (pendingBound) return undefined;
+    const local = segments.filter((s) => s.contentId === video.id);
+    return local.find((s) => s.id === activeSegmentId) ?? local[local.length - 1];
+  }, [pendingBound, segments, activeSegmentId, video.id]);
+  const segmentSources = useMemo(() => {
+    const sources = new Map(appState.content.map((source) => [source.id, source]));
+    sources.set(video.id, video); // Active recording snapshots may only exist in the player.
+    return sources;
+  }, [appState.content, video]);
+  const showClipTools =
+    settings.showClipToolsOnClips ||
+    video.type === 'Session' ||
+    video.type === 'Buffer' ||
+    segments.some((seg) => seg.contentId === video.id && seg.adjustedFrom);
   const segmentHover = useHoverIntent<number>(setHoveredSegmentId);
   const [dragState, setDragState] = useState<{ id: number | null; offset: number }>({
     id: null,
@@ -551,10 +578,6 @@ export default function VideoComponent({ video }: { video: Content }) {
   useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
-  const videoFileNameRef = useRef(video.fileName);
-  useEffect(() => {
-    videoFileNameRef.current = video.fileName;
-  }, [video.fileName]);
 
   // Track in-flight thumbnail requests to avoid stale overwrites
   const thumbnailReqTokenRef = useRef<Map<number, number>>(new Map());
@@ -562,36 +585,36 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Refreshes the thumbnail for a segment without overwriting live fields
   const refreshSegmentThumbnail = async (segment: Segment): Promise<void> => {
     const id = segment.id;
-    // Read the latest segment from state (may be undefined immediately after add)
-    const current = segmentsRef.current.find((s) => s.id === id);
-
-    // Only show the loading spinner for the first fetch. When a thumbnail
-    // already exists, keep it visible and let the card crossfade to the new one.
-    if (current && !current.thumbnailDataUrl) {
-      updateSegment({ ...current, isLoading: true });
-    }
 
     // Bump request token for this id
     const nextToken = (thumbnailReqTokenRef.current.get(id) ?? 0) + 1;
     thumbnailReqTokenRef.current.set(id, nextToken);
 
     try {
-      const latest = segmentsRef.current.find((s) => s.id === id) ?? current ?? segment;
-      // Use the video's filePath from metadata instead of constructing it
-      const thumbnailUrl = await fetchThumbnailAtTime(video.filePath, latest.startTime);
+      const thumbnailUrl = await fetchThumbnailAtTime(segment.filePath, segment.startTime);
 
       // Only apply if this is the latest request for this segment
       if (thumbnailReqTokenRef.current.get(id) === nextToken) {
-        const newest = segmentsRef.current.find((s) => s.id === id) ?? latest;
-        updateSegment({ ...newest, thumbnailDataUrl: thumbnailUrl, isLoading: false });
+        setSegmentThumbnail(id, thumbnailUrl);
+      } else {
+        URL.revokeObjectURL(thumbnailUrl);
       }
     } catch {
       if (thumbnailReqTokenRef.current.get(id) === nextToken) {
-        const newest = segmentsRef.current.find((s) => s.id === id) ?? current ?? segment;
-        updateSegment({ ...newest, isLoading: false });
+        setSegmentThumbnail(id);
       }
     }
   };
+
+  useEffect(() => {
+    if (
+      selectedSegment &&
+      !selectedSegment.thumbnailDataUrl &&
+      !thumbnailReqTokenRef.current.has(selectedSegment.id)
+    ) {
+      void refreshSegmentThumbnail(selectedSegment);
+    }
+  }, [selectedSegment]);
 
   // Initialize video metadata and setup keyboard controls
   useEffect(() => {
@@ -646,6 +669,7 @@ export default function VideoComponent({ video }: { video: Content }) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
+      if (e.key === 'Escape' && document.querySelector('[data-bookmark-popup]')) return;
       const isTyping =
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
@@ -794,6 +818,13 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   useEffect(() => {
     segmentsDirtyRef.current = true;
+    const preview = previewSegmentRef.current;
+    if (preview) {
+      const current = segments.find((s) => s.id === preview.id);
+      if (current?.startTime !== preview.startTime || current.endTime !== preview.endTime) {
+        cancelSegmentPreview();
+      }
+    }
   }, [segments]);
 
   // Clean up overrides when multi-track is deactivated
@@ -820,7 +851,17 @@ export default function VideoComponent({ video }: { video: Content }) {
     const vid = videoRef.current;
     if (!vid) return;
     let rafId = 0;
+    const checkPreviewEnd = () => {
+      const preview = previewSegmentRef.current;
+      if (preview && !vid.seeking && vid.currentTime >= preview.endTime) {
+        cancelSegmentPreview();
+        vid.pause();
+        vid.currentTime = preview.endTime;
+        setCurrentTime(preview.endTime);
+      }
+    };
     const tick = () => {
+      checkPreviewEnd();
       // While resizing a segment the video previews the dragged edge; the
       // playhead must not follow it.
       if (resizeDirectionRef.current == null && (!resumePlayback || initialSeekStarted.current)) {
@@ -832,9 +873,9 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (at.isMultiTrack) {
         const t = vid.currentTime;
         const segs = segmentsRef.current;
-        const activeSeg = segs.find(
-          (s) => s.fileName === videoFileNameRef.current && t >= s.startTime && t <= s.endTime,
-        );
+        const activeSeg =
+          previewSegmentRef.current ??
+          segs.find((s) => s.contentId === video.id && t >= s.startTime && t <= s.endTime);
         const activeId = activeSeg?.id ?? null;
 
         if (activeId !== activeSegmentIdRef.current || segmentsDirtyRef.current) {
@@ -859,25 +900,27 @@ export default function VideoComponent({ video }: { video: Content }) {
     };
     const onPause = () => {
       cancelAnimationFrame(rafId);
+      if (vid.paused) cancelSegmentPreview();
     };
     vid.addEventListener('play', onPlay);
     vid.addEventListener('pause', onPause);
+    vid.addEventListener('timeupdate', checkPreviewEnd);
     if (!vid.paused) onPlay();
     return () => {
       vid.removeEventListener('play', onPlay);
       vid.removeEventListener('pause', onPause);
+      vid.removeEventListener('timeupdate', checkPreviewEnd);
       cancelAnimationFrame(rafId);
     };
   }, []);
 
-  // Update container width on window resize
+  // The sidebar and segment controls can resize the ruler without resizing the window.
   useLayoutEffect(() => {
-    const handleResize = () => {
-      if (scrollContainerRef.current) {
-        setContainerWidth(scrollContainerRef.current.clientWidth);
-      }
-    };
-    handleResize();
+    const scroller = scrollContainerRef.current!;
+    const measure = () => setContainerWidth(scroller.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
 
     const preventPageZoom = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -885,11 +928,10 @@ export default function VideoComponent({ video }: { video: Content }) {
       }
     };
 
-    window.addEventListener('resize', handleResize);
     window.addEventListener('wheel', preventPageZoom, { passive: false });
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      observer.disconnect();
       window.removeEventListener('wheel', preventPageZoom);
     };
   }, []);
@@ -1154,6 +1196,7 @@ export default function VideoComponent({ video }: { video: Content }) {
   };
 
   const skipTime = (seconds: number) => {
+    cancelSegmentPreview();
     if (videoRef.current) {
       const newTime = videoRef.current.currentTime + seconds;
       const clamped = Math.max(0, Math.min(newTime, videoRef.current.duration));
@@ -1304,6 +1347,7 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Handle clicks on the timeline to seek video
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isInteracting || !scrollContainerRef.current) return;
+    cancelSegmentPreview();
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const clickPos = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
     const newTime = clickPos / pixelsPerSecond;
@@ -1317,6 +1361,7 @@ export default function VideoComponent({ video }: { video: Content }) {
   // Handle timeline marker drag interactions
   const handleMarkerDragStart = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    cancelSegmentPreview();
     const vid = videoRef.current;
     if (vid && !vid.paused) {
       resumeAfterScrubRef.current = true;
@@ -1450,19 +1495,34 @@ export default function VideoComponent({ video }: { video: Content }) {
     }
   };
 
-  // Add a new segment at the current video position
-  const handleAddSegment = async () => {
-    if (!videoRef.current) return;
-    const start = currentTime;
-    // Default to 10% of the visible timeline, capped at 2 minutes and clamped to video duration
-    const visibleDuration = duration / zoom;
-    const segmentDuration = Math.min(120, Math.max(1, visibleDuration * 0.1));
-    const end = Math.min(start + segmentDuration, duration);
-
-    // Use the frame already on screen as an instant thumbnail; the server
-    // thumbnail crossfades in once fetched.
-    const instantThumbnail = captureCurrentFrame();
-    const previousSegment = [...segments].reverse().find((s) => s.fileName === video.fileName);
+  const markSegmentBound = (edge: CutEdge, startNew = false) => {
+    const player = videoRef.current;
+    if (!player || !Number.isFinite(player.duration)) return;
+    const time = Math.max(0, Math.min(player.currentTime, player.duration));
+    if (edge === 'start' ? time >= player.duration : time <= 0) return;
+    cancelSegmentPreview();
+    if (selectedSegment && !startNew) {
+      const startTime = edge === 'start' ? time : selectedSegment.startTime;
+      const endTime = edge === 'end' ? time : selectedSegment.endTime;
+      if (startTime >= endTime) return;
+      const updated = { ...selectedSegment, startTime, endTime };
+      updateSegment(updated);
+      if (edge === 'start') void refreshSegmentThumbnail(updated);
+      return;
+    }
+    if (!pendingBound || pendingBound.edge === edge || startNew) {
+      setPendingBound({
+        edge,
+        time,
+        thumbnail: edge === 'start' ? captureCurrentFrame() : undefined,
+      });
+      return;
+    }
+    const start = edge === 'start' ? time : pendingBound.time;
+    const end = edge === 'end' ? time : pendingBound.time;
+    if (start >= end) return;
+    const instantThumbnail = edge === 'start' ? captureCurrentFrame() : pendingBound.thumbnail;
+    const previousSegment = [...segments].reverse().find((s) => s.contentId === video.id);
 
     const newSegment: Segment = {
       id: Date.now(),
@@ -1484,25 +1544,51 @@ export default function VideoComponent({ video }: { video: Content }) {
           : undefined,
     };
     addSegment(newSegment);
-    // The instant frame capture is good enough for the initial thumbnail, so
-    // only fall back to ffmpeg generation if the capture failed. Later moves
-    // and resizes regenerate via ffmpeg as usual.
-    if (!instantThumbnail) {
-      refreshSegmentThumbnail(newSegment);
+    setPendingBound(null);
+  };
+
+  const playSegment = () => {
+    const player = videoRef.current;
+    if (!selectedSegment || !player) return;
+    previewSegmentRef.current = selectedSegment;
+    player.currentTime = selectedSegment.startTime;
+    setCurrentTime(selectedSegment.startTime);
+    void player.play().catch(() => {
+      if (previewSegmentRef.current === selectedSegment) cancelSegmentPreview();
+    });
+  };
+
+  const selectSegment = (segment: Segment) => {
+    const linked = segment.contentId !== video.id;
+    const source = segmentSources.get(segment.contentId);
+    if (!source) return;
+    cancelSegmentPreview();
+    setActiveSegmentId(segment.id);
+    setPendingBound(null);
+    if (linked) {
+      const player = videoRef.current;
+      openLinkedMedia(
+        { type: 'video', video: source },
+        player ? { time: player.currentTime, paused: player.paused } : undefined,
+        segment.startTime,
+      );
     }
   };
 
   // Create a clip from current segments
-  const handleCreateClip = () => {
+  const handleCreateClip = (combine = false) => {
+    if (pendingBound) return;
     if (segments.length === 0) {
       setShowNoSegmentsIndicator(true);
       setTimeout(() => setShowNoSegmentsIndicator(false), 1300);
       return;
     }
 
+    // Adjusting an existing export saves this cut without consuming unrelated drafts.
+    const exporting = selectedSegment?.adjustedFrom && !combine ? [selectedSegment] : segments;
     const params = {
-      OutputMode: clipOutputMode,
-      Segments: segments.map((s) => ({
+      OutputMode: combine || exporting.length === 1 ? 'combined' : 'separate',
+      Segments: exporting.map((s) => ({
         id: s.id,
         contentId: s.contentId,
         startTime: s.startTime,
@@ -1586,12 +1672,13 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   // Start a potential drag on mousedown without blocking click-through
   const handleSegmentMouseDown = (e: React.MouseEvent<HTMLDivElement>, id: number) => {
-    if (!scrollContainerRef.current) return;
+    if (pendingBound || e.button !== 0 || !scrollContainerRef.current) return;
     const rect = scrollContainerRef.current.getBoundingClientRect();
     const dragPos = e.clientX - rect.left + scrollContainerRef.current.scrollLeft;
     const cursorTime = dragPos / pixelsPerSecond;
     const seg = segments.find((s) => s.id === id);
     if (seg) {
+      selectSegment(seg);
       dragCandidateRef.current = {
         id,
         startClientX: e.clientX,
@@ -1721,6 +1808,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     id: number,
     direction: 'start' | 'end',
   ) => {
+    if (pendingBound || e.button !== 0) return;
     // Do not stop propagation so timeline click can still happen
     resizeCandidateRef.current = { id, direction, startClientX: e.clientX };
     // Freeze playback at the grab point so the cursor restore isn't drifted
@@ -2063,8 +2151,8 @@ export default function VideoComponent({ video }: { video: Content }) {
   const getBookmarkMedia = useMemo(() => {
     const media = new Map<string, LinkedMedia>();
     for (const video of appState.content) {
-      if (video.type === 'Buffer' || video.type === 'Clip') {
-        const type = video.type === 'Clip' ? BookmarkType.ClipSaved : BookmarkType.ReplaySaved;
+      if (video.type === 'Buffer' || video.type === 'Clip' || video.type === 'Highlight') {
+        const type = video.type === 'Buffer' ? BookmarkType.ReplaySaved : BookmarkType.ClipSaved;
         media.set(`${type}:${video.id}`, { type: 'video', video });
       }
     }
@@ -2118,25 +2206,43 @@ export default function VideoComponent({ video }: { video: Content }) {
     return timelineBookmarks.filter((bookmark) => selectedBookmarkTypes.has(bookmark.type));
   }, [timelineBookmarks, selectedBookmarkTypes]);
 
-  const bookmarkStartTime = (bookmark: Bookmark) =>
-    getBookmarkPlaybackStart(timeStringToSeconds(bookmark.time), bookmark.type, video, settings);
+  const bookmarkIcons = useMemo(() => getIconMapping(video.igdbId), [video.igdbId]);
+  const bookmarkStartTime = useCallback(
+    (bookmark: Bookmark) => {
+      const end = timeStringToSeconds(bookmark.time);
+      if (bookmark.type === BookmarkType.ClipSaved && bookmark.clipStart) {
+        const start = timeStringToSeconds(bookmark.clipStart);
+        if (start >= 0 && start <= end) return start;
+      }
+      return getBookmarkPlaybackStart(end, bookmark.type, video, settings);
+    },
+    [video, settings],
+  );
 
-  const seekToBookmark = (bookmark: Bookmark) => {
-    const seekTo = bookmarkStartTime(bookmark);
-    const player = videoRef.current;
-    if (player) {
-      if (bookmark.type === BookmarkType.ScreenshotSaved) player.pause();
-      player.currentTime = seekTo;
-    }
-    setCurrentTime(seekTo);
-  };
+  const seekToBookmark = useCallback(
+    (bookmark: Bookmark) => {
+      cancelSegmentPreview();
+      const seekTo = bookmarkStartTime(bookmark);
+      const player = videoRef.current;
+      if (player) {
+        if (bookmark.type === BookmarkType.ScreenshotSaved) player.pause();
+        player.currentTime = seekTo;
+        if (bookmark.type === BookmarkType.ClipSaved) void player.play().catch(() => {});
+      }
+      setCurrentTime(seekTo);
+    },
+    [bookmarkStartTime, cancelSegmentPreview],
+  );
 
-  const selectBookmark = (bookmark: Bookmark, trigger: HTMLElement) => {
-    seekToBookmark(bookmark);
-    if (bookmarkMediaNames[bookmark.type]) {
-      setBookmarkMenu({ bookmark, trigger });
-    }
-  };
+  const selectBookmark = useCallback(
+    (bookmark: Bookmark, trigger: HTMLElement) => {
+      seekToBookmark(bookmark);
+      if (bookmarkMediaNames[bookmark.type]) {
+        setBookmarkMenu({ bookmark, trigger });
+      }
+    },
+    [seekToBookmark],
+  );
 
   const linkedBookmarkMedia = bookmarkMenu && getBookmarkMedia(bookmarkMenu.bookmark);
 
@@ -2167,6 +2273,7 @@ export default function VideoComponent({ video }: { video: Content }) {
   }, [video.matches, duration]);
 
   const seekToTime = (time: number) => {
+    cancelSegmentPreview();
     setCurrentTime(time);
     if (videoRef.current) videoRef.current.currentTime = time;
   };
@@ -2190,14 +2297,6 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (isFullscreen) showControlsTemporarily();
     };
   });
-
-  const seekBarBookmarks = useMemo(() => {
-    if (!isFullscreen || !settings.showBookmarksInFullscreen || duration <= 0) return [];
-    return filteredBookmarks.map((bookmark) => ({
-      bookmark,
-      fraction: Math.min(1, Math.max(0, timeStringToSeconds(bookmark.time) / duration)),
-    }));
-  }, [filteredBookmarks, duration, isFullscreen, settings.showBookmarksInFullscreen]);
 
   const toggleBookmarkType = (type: BookmarkType) => {
     setSelectedBookmarkTypes((prev) => {
@@ -2252,29 +2351,33 @@ export default function VideoComponent({ video }: { video: Content }) {
     });
   };
 
-  const handleDeleteBookmark = (bookmarkId: number) => {
-    // Find the bookmark in the video's bookmarks array
-    const bookmarkIndex = video.bookmarks.findIndex((b) => b.id === bookmarkId);
+  const handleDeleteBookmark = useCallback(
+    (bookmarkId: number) => {
+      closeBookmarkMenu();
+      // Find the bookmark in the video's bookmarks array
+      const bookmarkIndex = video.bookmarks.findIndex((b) => b.id === bookmarkId);
 
-    if (bookmarkIndex !== -1) {
-      const bookmark = video.bookmarks[bookmarkIndex];
-      confirmDelete({
-        title: 'Delete bookmark?',
-        description: `Delete the ${bookmark.type.toLowerCase()} bookmark at ${bookmark.time}? This action cannot be undone.`,
-        onConfirm: () => {
-          video.bookmarks.splice(bookmarkIndex, 1);
+      if (bookmarkIndex !== -1) {
+        const bookmark = video.bookmarks[bookmarkIndex];
+        confirmDelete({
+          title: 'Delete bookmark?',
+          description: `Delete the ${bookmark.type.toLowerCase()} bookmark at ${bookmark.time}? This action cannot be undone.`,
+          onConfirm: () => {
+            video.bookmarks.splice(bookmarkIndex, 1);
 
-          const bookmarks = [...video.bookmarks];
-          video.bookmarks = bookmarks;
+            const bookmarks = [...video.bookmarks];
+            video.bookmarks = bookmarks;
 
-          sendMessageToBackend('DeleteBookmark', {
-            ContentId: video.id,
-            Id: bookmarkId,
-          });
-        },
-      });
-    }
-  };
+            sendMessageToBackend('DeleteBookmark', {
+              ContentId: video.id,
+              Id: bookmarkId,
+            });
+          },
+        });
+      }
+    },
+    [video, confirmDelete, closeBookmarkMenu],
+  );
 
   const handleDeleteSegment = (segmentId: number) => {
     confirmDelete({
@@ -2332,7 +2435,11 @@ export default function VideoComponent({ video }: { video: Content }) {
       {bookmarkMenu && (
         <BookmarkMediaMenu
           trigger={bookmarkMenu.trigger}
-          openLabel={`Open ${bookmarkMediaNames[bookmarkMenu.bookmark.type]}`}
+          openLabel={
+            linkedBookmarkMedia?.type === 'video' && linkedBookmarkMedia.video.type === 'Highlight'
+              ? 'Open Highlight'
+              : `Open ${bookmarkMediaNames[bookmarkMenu.bookmark.type]}`
+          }
           canOpen={Boolean(linkedBookmarkMedia)}
           onOpen={() =>
             linkedBookmarkMedia && openMedia(linkedBookmarkMedia, bookmarkMenu.bookmark.clipOffset)
@@ -2465,6 +2572,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                     step={0.01}
                     value={Math.min(currentTime, duration)}
                     onChange={(e) => {
+                      cancelSegmentPreview();
                       const t = parseFloat(e.target.value);
                       setCurrentTime(t);
                       if (videoRef.current) videoRef.current.currentTime = t;
@@ -2477,36 +2585,16 @@ export default function VideoComponent({ video }: { video: Content }) {
                       backgroundImage: `linear-gradient(to right, var(--color-accent) calc(6px + ${Math.min(currentTime, duration) / Math.max(0.01, duration)} * (100% - 12px)), rgb(255 255 255 / 0.3) 0)`,
                     }}
                   />
-                  <AnimatePresence initial={false}>
-                    {seekBarBookmarks.map(({ bookmark, fraction }) => (
-                      <motion.div
-                        key={bookmark.id}
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.5 }}
-                        transition={{ duration: 0.1 }}
-                        className="absolute bottom-[calc(50%+2px)] flex flex-col items-center -translate-x-1/2 pointer-events-none will-change-transform"
-                        style={{ left: `calc(6px + ${fraction} * (100% - 12px))` }}
-                      >
-                        <button
-                          type="button"
-                          onClick={(e) => selectBookmark(bookmark, e.currentTarget)}
-                          className="flex items-center justify-center w-[22px] h-[22px] rounded-full bg-[#EFAF2B] text-[#25272e] cursor-pointer pointer-events-auto"
-                          aria-label={`${bookmarkLabel(bookmark.type)} at ${bookmark.time}`}
-                          data-bookmark-control
-                        >
-                          {React.createElement(
-                            getIconMapping(video.igdbId)[bookmark.type] || Skull,
-                            {
-                              size: 16,
-                              strokeWidth: 2.5,
-                            },
-                          )}
-                        </button>
-                        <div className="w-[2px] h-[9px] bg-[#EFAF2B]" />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
+                  {isFullscreen && settings.showBookmarksInFullscreen && duration > 0 && (
+                    <BookmarkTrack
+                      bookmarks={filteredBookmarks}
+                      duration={duration}
+                      icons={bookmarkIcons}
+                      label={bookmarkLabel}
+                      onSelect={selectBookmark}
+                      fullscreen
+                    />
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -2551,7 +2639,14 @@ export default function VideoComponent({ video }: { video: Content }) {
                     </div>
 
                     <span className="ml-2 text-xs tabular-nums text-white/90">
-                      {formatTime(currentTime)} / {formatTime(duration)}
+                      {formatTimecode(
+                        resizingSegmentId !== null && selectedSegment && resizeDirection
+                          ? resizeDirection === 'start'
+                            ? selectedSegment.startTime
+                            : selectedSegment.endTime
+                          : currentTime,
+                      )}{' '}
+                      / {formatTime(duration)}
                     </span>
                   </div>
 
@@ -2726,8 +2821,35 @@ export default function VideoComponent({ video }: { video: Content }) {
               </div>
             </div>
           </div>
+          {showClipTools && (
+            <SegmentCutControls
+              start={
+                pendingBound
+                  ? pendingBound.edge === 'start'
+                    ? pendingBound.time
+                    : undefined
+                  : selectedSegment?.startTime
+              }
+              end={
+                pendingBound
+                  ? pendingBound.edge === 'end'
+                    ? pendingBound.time
+                    : undefined
+                  : selectedSegment?.endTime
+              }
+              cursor={currentTime}
+              duration={duration}
+              ready={duration > 0 && !videoUndecodable}
+              pending={!!pendingBound}
+              hint={showNoSegmentsIndicator}
+              onMark={markSegmentBound}
+              onPreview={playSegment}
+              onNew={() => markSegmentBound('start', true)}
+              onCancel={() => setPendingBound(null)}
+            />
+          )}
           <div
-            className="relative w-full mt-auto pt-1 overflow-x-scroll overflow-y-hidden select-none shrink-0 timeline-wrapper"
+            className={`relative w-full pt-1 overflow-x-scroll overflow-y-hidden select-none shrink-0 timeline-wrapper ${showClipTools ? '' : 'mt-auto'}`}
             ref={scrollContainerRef}
             onMouseMove={(e) => {
               handleSegmentDrag(e);
@@ -2738,6 +2860,7 @@ export default function VideoComponent({ video }: { video: Content }) {
           >
             <div
               className="ticks-container relative h-[42px]"
+              onClick={handleTimelineClick}
               style={{
                 width: `${duration * pixelsPerSecond}px`,
                 minWidth: '100%',
@@ -2745,41 +2868,14 @@ export default function VideoComponent({ video }: { video: Content }) {
               }}
             >
               {bookmarksReady && (
-                <AnimatePresence initial={false}>
-                  {filteredBookmarks.map((bookmark, index) => {
-                    const timeInSeconds = timeStringToSeconds(bookmark.time);
-                    const leftPos = timeInSeconds * pixelsPerSecond;
-                    const Icon =
-                      getIconMapping(video.igdbId)[bookmark.type as BookmarkType] || Skull;
-
-                    return (
-                      <motion.button
-                        key={`bookmark-${bookmark.id ?? index}`}
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.5 }}
-                        transition={{ duration: 0.1 }}
-                        className="tooltip absolute bottom-0 transform -translate-x-1/2 cursor-pointer z-10 flex flex-col items-center text-[#25272e]"
-                        data-tip={`${bookmarkLabel(bookmark.type)}${bookmark.subtype ? ` - ${bookmark.subtype}` : ''} (${bookmark.time})`}
-                        aria-label={`${bookmarkLabel(bookmark.type)} at ${bookmark.time}`}
-                        data-bookmark-control
-                        style={{ left: `${leftPos}px` }}
-                        onClick={(e) => selectBookmark(bookmark, e.currentTarget)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          closeBookmarkMenu();
-                          handleDeleteBookmark(bookmark.id);
-                        }}
-                      >
-                        <div className="bg-[#EFAF2B] w-[22px] h-[22px] rounded-full flex items-center justify-center mb-0">
-                          <Icon size={16} strokeWidth={2.5} />
-                        </div>
-                        <div className="w-[2px] h-[12px] bg-[#EFAF2B]" />
-                      </motion.button>
-                    );
-                  })}
-                </AnimatePresence>
+                <BookmarkTrack
+                  bookmarks={filteredBookmarks}
+                  duration={duration}
+                  icons={bookmarkIcons}
+                  label={bookmarkLabel}
+                  onSelect={selectBookmark}
+                  onDelete={handleDeleteBookmark}
+                />
               )}
               {minorTicks.map((tickTime) => {
                 if (tickTime >= duration) return null;
@@ -2839,10 +2935,17 @@ export default function VideoComponent({ video }: { video: Content }) {
                     }}
                   />
                 )}
+                {pendingBound && (
+                  <div
+                    className="absolute inset-y-0 z-10 w-0.5 bg-primary pointer-events-none"
+                    style={{ left: `${pendingBound.time * pixelsPerSecond}px` }}
+                    title={`${pendingBound.edge === 'start' ? 'Start' : 'End'} ${formatTimecode(pendingBound.time)}`}
+                  />
+                )}
                 {sortedSegments.map((seg) => {
                   const left = seg.startTime * pixelsPerSecond;
                   const width = (seg.endTime - seg.startTime) * pixelsPerSecond;
-                  const hidden = seg.fileName !== video.fileName;
+                  const hidden = seg.contentId !== video.id;
                   const audioMenuOpen =
                     timelineAudioMenu?.segId === seg.id && timelineAudioMenu.visible;
                   const customMix = hasCustomAudioMix(seg.mutedAudioTracks, seg.audioTrackVolumes);
@@ -2850,7 +2953,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                     <div
                       key={seg.id}
                       className={`absolute top-0 left-0 h-full cursor-move ${hidden ? 'hidden' : ''} transition-colors rounded-r-sm rounded-l-sm shadow-md
-                                                bg-primary/20 border border-primary/20`}
+                                                bg-primary/20 border ${selectedSegment?.id === seg.id ? 'border-primary/80' : 'border-primary/20'}`}
                       style={{ left: `${left}px`, width: `${width}px` }}
                       onMouseEnter={(e) => segmentHover.enter(seg.id, e)}
                       onMouseMove={segmentHover.move}
@@ -2913,6 +3016,15 @@ export default function VideoComponent({ video }: { video: Content }) {
                           </button>
                         )}
 
+                      {resizingSegmentId === seg.id && resizeDirection && (
+                        <span
+                          className={`absolute bottom-1 z-20 px-1.5 py-0.5 rounded bg-base-100 text-xs font-mono tabular-nums text-accent pointer-events-none ${resizeDirection === 'start' ? 'left-1' : 'right-1'}`}
+                        >
+                          {formatTimecode(
+                            resizeDirection === 'start' ? seg.startTime : seg.endTime,
+                          )}
+                        </span>
+                      )}
                       <div
                         className="absolute top-0 -left-[7px] z-20 w-[14px] h-full bg-transparent cursor-col-resize pointer-events-auto"
                         onMouseDown={(e) => handleResizeMouseDown(e, seg.id, 'start')}
@@ -3107,46 +3219,77 @@ export default function VideoComponent({ video }: { video: Content }) {
                     <span>Upload</span>
                   </Button>
                 )}
-              {video.type === 'Highlight' && copyButtons}
               {showClipTools && (
                 <>
                   <Button
                     variant="primary"
                     size="sm"
                     className="h-10 hover:text-accent"
-                    onClick={handleCreateClip}
+                    disabled={!!pendingBound}
+                    onClick={() => handleCreateClip()}
                   >
                     <Clapperboard className="w-5 h-5" />
-                    <span className="grid justify-items-start">
-                      <span className="col-start-1 row-start-1 invisible" aria-hidden="true">
-                        Create Clips
-                      </span>
-                      <span className="col-start-1 row-start-1">
-                        {clipOutputMode === 'separate' ? 'Create Clips' : 'Create Clip'}
-                      </span>
-                    </span>
+                    {selectedSegment?.adjustedFrom
+                      ? 'Save adjusted clip'
+                      : segments.length > 1
+                        ? `Create ${segments.length} clips`
+                        : 'Create Clip'}
                   </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className={`h-10 hover:text-accent ${showNoSegmentsIndicator ? 'segment-hint-flash' : ''}`}
-                    onClick={handleAddSegment}
-                  >
-                    <SquarePlus className="w-5 h-5" />
-                    <span>Add Segment</span>
-                  </Button>
+                  {segments.length > 1 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-10"
+                      disabled={!!pendingBound}
+                      onClick={() => handleCreateClip(true)}
+                    >
+                      Combine into one clip
+                    </Button>
+                  )}
+                  {segments.length > 0 && (
+                    <Button
+                      size="sm"
+                      icon
+                      aria-label="Segment list"
+                      title="Segment list"
+                      aria-expanded={showSegmentList}
+                      onClick={() => setSegmentListOpen(!showSegmentList)}
+                    >
+                      <ListVideo size={18} />
+                    </Button>
+                  )}
+                  {exportedClip && latestExport && (
+                    <Button
+                      size="sm"
+                      className="h-10"
+                      onClick={() =>
+                        openLinkedMedia(
+                          { type: 'video', video: exportedClip, playlist: latestExport.clipIds },
+                          videoRef.current
+                            ? {
+                                time: videoRef.current.currentTime,
+                                paused: videoRef.current.paused,
+                              }
+                            : undefined,
+                          0,
+                        )
+                      }
+                    >
+                      {latestExport.clipIds.length > 1 ? 'View created clips' : 'View created clip'}
+                    </Button>
+                  )}
                 </>
               )}
-              {(video.type === 'Buffer' || video.type === 'Clip') && (
-                <div className="flex items-center gap-3">
+              {video.type !== 'Session' && (
+                <div className="flex flex-wrap items-center gap-3">
                   {copyButtons}
                   <OpenFullSessionButton
                     bookmarkType={
-                      video.type === 'Clip' ? BookmarkType.ClipSaved : BookmarkType.ReplaySaved
+                      video.type === 'Buffer' ? BookmarkType.ReplaySaved : BookmarkType.ClipSaved
                     }
                     mediaId={video.id}
                     videoRef={videoRef}
-                    clipTime={video.type === 'Clip' ? currentTime : undefined}
+                    clipTime={video.type === 'Buffer' ? undefined : currentTime}
                     duration={duration}
                   />
                 </div>
@@ -3155,36 +3298,34 @@ export default function VideoComponent({ video }: { video: Content }) {
             </div>
 
             <div className="flex items-center gap-3">
-              {(video.type === 'Session' || video.type === 'Buffer') && (
-                <>
-                  {availableBookmarkTypes.length > 0 && (
-                    <div className="flex items-center h-10 gap-0 px-0 border rounded-lg bg-base-300 join border-base-400">
-                      {availableBookmarkTypes.map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => toggleBookmarkType(type)}
-                          aria-label={`${bookmarkLabel(type)} bookmarks`}
-                          title={`${bookmarkLabel(type)} bookmarks`}
-                          className={`btn btn-sm h-full btn-secondary border-none transition-colors join-item px-2 ${selectedBookmarkTypes.has(type) ? 'text-accent' : 'text-gray-300'}`}
-                        >
-                          {React.createElement(getIconMapping(video.igdbId)[type] || Skull, {
-                            className: 'w-5 h-5',
-                          })}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 rounded-lg bg-base-300">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      className="h-10 hover:text-accent"
-                      onClick={handleAddBookmark}
+              {availableBookmarkTypes.length > 0 && (
+                <div className="flex items-center h-10 gap-0 px-0 border rounded-lg bg-base-300 join border-base-400">
+                  {availableBookmarkTypes.map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => toggleBookmarkType(type)}
+                      aria-label={`${bookmarkLabel(type)} bookmarks`}
+                      title={`${bookmarkLabel(type)} bookmarks`}
+                      className={`btn btn-sm h-full btn-secondary border-none transition-colors join-item px-2 ${selectedBookmarkTypes.has(type) ? 'text-accent' : 'text-gray-300'}`}
                     >
-                      <BookmarkPlus className="w-5 h-5" />
-                    </Button>
-                  </div>
-                </>
+                      {React.createElement(getIconMapping(video.igdbId)[type] || Skull, {
+                        className: 'w-5 h-5',
+                      })}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(video.type === 'Session' || video.type === 'Buffer') && (
+                <div className="flex items-center gap-2 rounded-lg bg-base-300">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="h-10 hover:text-accent"
+                    onClick={handleAddBookmark}
+                  >
+                    <BookmarkPlus className="w-5 h-5" />
+                  </Button>
+                </div>
               )}
 
               <div className="flex items-center h-10 gap-1 px-0 border rounded-lg bg-base-300 border-base-400">
@@ -3209,102 +3350,92 @@ export default function VideoComponent({ video }: { video: Content }) {
             </div>
           </div>
         </div>
-        <div className="flex flex-col h-full border-l bg-base-300 text-neutral-content w-52 2xl:w-70.25 border-base-400">
-          <div className="flex-1 pt-4 pl-4 pr-0.5 overflow-y-scroll">
-            {segments.map((seg, index) => (
-              <SegmentCard
-                key={seg.id}
-                segment={seg}
-                index={index}
-                moveCard={moveCard}
-                formatTime={formatTime}
-                isHovered={hoveredSegmentId === seg.id}
-                segmentHover={segmentHover}
-                removeSegment={removeSegment}
-                audioTrackNames={video.audioTrackNames}
-                audioTrackTypes={video.audioTrackTypes}
-                onAudioMixChange={(id, mix) =>
-                  updateSegment({ ...segments.find((s) => s.id === id)!, ...mix })
-                }
-              />
-            ))}
-            {clipOutputMode === 'combined' && segments.length > 0 && (
-              <div className="flex items-center justify-center pb-1">
-                <span
-                  className="text-sm font-medium text-gray-300 opacity-50 tabular-nums"
-                  title="Total length of all segments"
-                >
-                  {formatTime(totalSegmentsDuration)}
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="relative flex items-center gap-2 px-4 pt-2 pb-4">
-            <Button
-              variant="primary"
-              size="sm"
-              className="flex-1 h-10 py-0 hover:text-accent transition-[color,background-color,border-color,opacity] duration-300"
-              onClick={handleClearSegments}
-              disabled={segments.length === 0}
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Clear</span>
-            </Button>
-            <div
-              ref={segmentOptionsRef}
-              className={`dropdown dropdown-top dropdown-end static! ${segmentOptionsOpen ? 'dropdown-open' : ''}`}
-            >
+        {showSegmentList && (
+          <div className="flex flex-col h-full border-l bg-base-300 text-neutral-content w-52 2xl:w-70.25 border-base-400">
+            <div className="flex-1 pt-4 pl-4 pr-0.5 overflow-y-scroll">
+              {segments.map((seg, index) => (
+                <SegmentCard
+                  key={seg.id}
+                  segment={seg}
+                  index={index}
+                  moveCard={moveCard}
+                  formatTime={formatTimecode}
+                  selected={selectedSegment?.id === seg.id}
+                  selectable={segmentSources.has(seg.contentId)}
+                  onSelect={selectSegment}
+                  isHovered={hoveredSegmentId === seg.id}
+                  segmentHover={segmentHover}
+                  removeSegment={removeSegment}
+                  audioTrackNames={segmentSources.get(seg.contentId)?.audioTrackNames}
+                  audioTrackTypes={segmentSources.get(seg.contentId)?.audioTrackTypes}
+                  onAudioMixChange={(id, mix) =>
+                    updateSegment({ ...segments.find((s) => s.id === id)!, ...mix })
+                  }
+                />
+              ))}
+              {segments.length > 1 && (
+                <div className="flex items-center justify-center pb-1">
+                  <span
+                    className="text-sm font-medium text-gray-300 opacity-50 tabular-nums"
+                    title="Total length of all segments"
+                  >
+                    {formatTime(totalSegmentsDuration)}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="relative flex items-center gap-2 px-4 pt-2 pb-4">
               <Button
                 variant="primary"
                 size="sm"
-                className="h-10 px-2.5 hover:text-accent"
-                aria-label="Segment options"
-                aria-expanded={segmentOptionsOpen}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  if (segmentOptionsOpen) closeSegmentOptions();
-                  else setSegmentOptionsOpen(true);
-                }}
+                className="flex-1 h-10 py-0 hover:text-accent transition-[color,background-color,border-color,opacity] duration-300"
+                onClick={handleClearSegments}
+                disabled={segments.length === 0}
               >
-                <Settings className="w-4 h-4" />
+                <Trash2 className="w-4 h-4" />
+                <span>Clear</span>
               </Button>
-              <ul
-                tabIndex={0}
-                className="dropdown-content menu bg-base-300 border border-base-400 rounded-lg z-[100] left-4! p-1.5 mb-2 shadow"
+              <div
+                ref={segmentOptionsRef}
+                className={`dropdown dropdown-top dropdown-end static! ${segmentOptionsOpen ? 'dropdown-open' : ''}`}
               >
-                <li>
-                  <label className="flex items-center gap-2 px-2! text-sm text-gray-300 hover:bg-transparent! active:bg-transparent!">
-                    <input
-                      type="checkbox"
-                      name="clipClearSegmentsAfterCreatingClip"
-                      checked={settings.clipClearSegmentsAfterCreatingClip}
-                      onChange={(e) =>
-                        updateSettings({ clipClearSegmentsAfterCreatingClip: e.target.checked })
-                      }
-                      className="checkbox checkbox-sm checkbox-accent"
-                    />
-                    Clear segments after clipping
-                  </label>
-                </li>
-                <li className="menu-title px-2 pt-2 pb-1 text-xs">Clip output</li>
-                {(['combined', 'separate'] as const).map((mode) => (
-                  <li key={mode}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="h-10 px-2.5 hover:text-accent"
+                  aria-label="Segment options"
+                  aria-expanded={segmentOptionsOpen}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (segmentOptionsOpen) closeSegmentOptions();
+                    else setSegmentOptionsOpen(true);
+                  }}
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
+                <ul
+                  tabIndex={0}
+                  className="dropdown-content menu bg-base-300 border border-base-400 rounded-lg z-[100] left-4! p-1.5 mb-2 shadow"
+                >
+                  <li>
                     <label className="flex items-center gap-2 px-2! text-sm text-gray-300 hover:bg-transparent! active:bg-transparent!">
                       <input
-                        type="radio"
-                        name="clipOutputMode"
-                        checked={clipOutputMode === mode}
-                        onChange={() => setClipOutputMode(mode)}
-                        className="radio radio-sm radio-accent"
+                        type="checkbox"
+                        name="clipClearSegmentsAfterCreatingClip"
+                        checked={settings.clipClearSegmentsAfterCreatingClip}
+                        onChange={(e) =>
+                          updateSettings({ clipClearSegmentsAfterCreatingClip: e.target.checked })
+                        }
+                        className="checkbox checkbox-sm checkbox-accent"
                       />
-                      {mode === 'combined' ? 'Combined' : 'Separate'}
+                      Clear segments after clipping
                     </label>
                   </li>
-                ))}
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </DndProvider>
   );

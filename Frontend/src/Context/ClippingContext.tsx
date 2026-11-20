@@ -9,11 +9,13 @@ export interface ClippingProgress {
   progress: number;
   segments: Segment[];
   error?: string;
+  clipIds?: string[];
   outputType?: ContentType; // Set when the result isn't a clip, e.g. merged sessions
 }
 
 export interface ClippingContextType {
   clippingProgress: Record<number, ClippingProgress>;
+  latestExport?: { clipIds: string[]; sourceIds: string[] };
   removeClipping: (id: number) => void;
   cancelClip: (id: number) => void;
 }
@@ -22,6 +24,7 @@ export const ClippingContext = createContext<ClippingContextType | undefined>(un
 
 export function ClippingProvider({ children }: { children: ReactNode }) {
   const [clippingProgress, setClippingProgress] = useState<Record<number, ClippingProgress>>({});
+  const [latestExport, setLatestExport] = useState<ClippingContextType['latestExport']>();
   const suppressedIds = useRef<Set<number>>(new Set());
   const { removeSegment } = useSegments();
   const settings = useSettings();
@@ -44,6 +47,12 @@ export function ClippingProvider({ children }: { children: ReactNode }) {
         }));
 
         if (progress.progress === 100) {
+          if (progress.clipIds?.length) {
+            setLatestExport({
+              clipIds: progress.clipIds,
+              sourceIds: progress.segments.map((segment) => segment.contentId),
+            });
+          }
           // If setting is enabled, remove all segments that were in the clip
           if (
             settings.clipClearSegmentsAfterCreatingClip &&
@@ -96,7 +105,9 @@ export function ClippingProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ClippingContext.Provider value={{ clippingProgress, removeClipping, cancelClip }}>
+    <ClippingContext.Provider
+      value={{ clippingProgress, latestExport, removeClipping, cancelClip }}
+    >
       {children}
     </ClippingContext.Provider>
   );

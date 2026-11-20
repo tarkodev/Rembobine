@@ -1159,7 +1159,8 @@ namespace Segra.Backend.App
                         if (content == null)
                         {
                             Log.Warning($"Content not found in state for segment: {contentId}");
-                            continue;
+                            await ShowModal("Source unavailable", "A selected video is no longer available. Remove its segment and try again.", "error");
+                            return;
                         }
 
                         List<int>? mutedAudioTracks = null;
@@ -1198,10 +1199,10 @@ namespace Segra.Backend.App
                     }
                 }
 
-                bool createSeparateClips = message.TryGetProperty("OutputMode", out JsonElement outputModeElement)
-                    && string.Equals(outputModeElement.GetString(), "separate", StringComparison.OrdinalIgnoreCase);
-
-                await ClipService.CreateClips(segments, createSeparateClips);
+                bool separate = message.TryGetProperty("OutputMode", out JsonElement outputModeElement)
+                    ? string.Equals(outputModeElement.GetString(), "separate", StringComparison.OrdinalIgnoreCase)
+                    : segments.Count > 1;
+                await ClipService.CreateClips(segments, createSeparateClips: separate);
             }
             else
             {

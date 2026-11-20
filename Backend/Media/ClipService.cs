@@ -130,9 +130,7 @@ namespace Segra.Backend.Media
                     string inputFilePath = inputFilePaths[segmentIndex];
                     if (!File.Exists(inputFilePath))
                     {
-                        Log.Information($"Input video file not found: {inputFilePath}");
-                        segmentIndex++;
-                        continue;
+                        throw new FileNotFoundException($"The selected video is unavailable: {segment.FileName}", inputFilePath);
                     }
 
                     string tempFileName = PathUtils.Combine(Path.GetTempPath(), $"clip{Guid.NewGuid()}.mp4");
@@ -196,7 +194,7 @@ namespace Segra.Backend.Media
                         var segmentAudioTrackTypes = Settings.Instance.ClipKeepSeparateAudioTracks
                             ? extractedSegmentTrackTypes[i]
                             : null;
-                        string? segmentClipId = await ContentService.CreateMetadataFile(segmentOutputFilePath, Content.ContentType.Clip, segment.Game ?? "Unknown", null, segment.Title, createdAt: segmentEndTime, igdbId: segment.IgdbId, audioTrackNames: segmentAudioTrackNames, audioTrackTypes: segmentAudioTrackTypes, gameExePath: GetSourceGameExePath(segment), exportedAt: segmentEndTime.HasValue ? DateTime.Now : null);
+                        string? segmentClipId = await ContentService.CreateMetadataFile(segmentOutputFilePath, Content.ContentType.Clip, segment.Game ?? "Unknown", bookmarks.InOutput([segment]), segment.Title, createdAt: segmentEndTime, igdbId: segment.IgdbId, audioTrackNames: segmentAudioTrackNames, audioTrackTypes: segmentAudioTrackTypes, gameExePath: GetSourceGameExePath(segment), exportedAt: segmentEndTime.HasValue ? DateTime.Now : null);
                         if (segmentClipId != null)
                             completedClips.Add((segmentClipId, [segment]));
                         await ContentService.CreateThumbnail(segmentOutputFilePath, Content.ContentType.Clip, segmentClipId);
@@ -218,7 +216,13 @@ namespace Segra.Backend.Media
                     else
                     {
                         concatFilePath = PathUtils.Combine(Path.GetTempPath(), $"concat_list_{Guid.NewGuid()}.txt");
-                        await File.WriteAllLinesAsync(concatFilePath, tempClipFiles.Select(FFmpegService.BuildConcatListLine));
+                        // Anchor the next cut at the selected boundary; encoded AAC packets may extend past it.
+                        var concatLines = tempClipFiles.SelectMany((file, i) => new[]
+                        {
+                            FFmpegService.BuildConcatListLine(file),
+                            FormattableString.Invariant($"duration {extractedSegments[i].EndTime - extractedSegments[i].StartTime:F7}")
+                        });
+                        await File.WriteAllLinesAsync(concatFilePath, concatLines);
 
                         try
                         {
@@ -279,7 +283,7 @@ namespace Segra.Backend.Media
 
                 if (!createSeparateClips)
                 {
-                    string? clipId = await ContentService.CreateMetadataFile(outputFilePath!, Content.ContentType.Clip, firstSegment?.Game!, null, firstSegment?.Title, createdAt: combinedEndTime, igdbId: firstSegment?.IgdbId, audioTrackNames: unionAudioLayout, audioTrackTypes: unionAudioTrackTypes, gameExePath: firstSegment != null ? GetSourceGameExePath(firstSegment) : null, exportedAt: combinedEndTime.HasValue ? DateTime.Now : null);
+                    string? clipId = await ContentService.CreateMetadataFile(outputFilePath!, Content.ContentType.Clip, firstSegment?.Game!, bookmarks.InOutput(extractedSegments), firstSegment?.Title, createdAt: combinedEndTime, igdbId: firstSegment?.IgdbId, audioTrackNames: unionAudioLayout, audioTrackTypes: unionAudioTrackTypes, gameExePath: firstSegment != null ? GetSourceGameExePath(firstSegment) : null, exportedAt: combinedEndTime.HasValue ? DateTime.Now : null);
                     if (clipId != null)
                         completedClips.Add((clipId, extractedSegments));
                     await ContentService.CreateThumbnail(outputFilePath!, Content.ContentType.Clip, clipId);
@@ -296,7 +300,7 @@ namespace Segra.Backend.Media
                 // so the clip is on screen first (avoids a skeleton-removed-before-content flicker).
                 await SettingsService.LoadContentFromFolderIntoState(sendToFrontend: false);
                 await MessageService.SendStateToFrontend("Clip created");
-                await MessageService.SendFrontendMessage("ClipProgress", new { id, progress = 100, segments });
+                await MessageService.SendFrontendMessage("ClipProgress", new { id, progress = 100, segments, clipIds = completedClips.Select(c => c.Id).ToArray() });
             }
             catch (Exception ex)
             {
@@ -1273,7 +1277,7 @@ namespace Segra.Backend.Media
             catch (Exception ex) { Log.Information($"Error deleting file {path}: {ex.Message}"); }
         }
 
-        private static string ReserveOutputFilePath(string filePath)
+        internal static string ReserveOutputFilePath(string filePath)
         {
             string directory = Path.GetDirectoryName(filePath) ?? string.Empty;
             string fileName = Path.GetFileNameWithoutExtension(filePath);

@@ -796,7 +796,7 @@ namespace Segra.Backend.Media
                 {
                     if (type == Content.ContentType.Buffer)
                         RemoveBookmarksForDeletedMedia(BookmarkType.ReplaySaved, id);
-                    else if (type == Content.ContentType.Clip)
+                    else if (type is Content.ContentType.Clip or Content.ContentType.Highlight)
                         RemoveBookmarksForDeletedMedia(BookmarkType.ClipSaved, id);
                 }
 
