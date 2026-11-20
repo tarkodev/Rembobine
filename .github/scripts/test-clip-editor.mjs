@@ -347,7 +347,13 @@ try {
         { id: 26, time: "00:00:07", type: "ReplaySaved", mediaId: "replay" },
         { id: 27, time: "00:00:10", type: "ReplaySaved" },
         { id: 20, time: "00:00:08", type: "ScreenshotSaved" },
-        { id: 21, time: "00:00:08", type: "ClipSaved" },
+        {
+          id: 21,
+          time: "00:00:08",
+          type: "ClipSaved",
+          clipStart: "00:00:05.500",
+        },
+        { id: 28, time: "00:00:09", type: "ClipSaved", clipStart: "00:00:08" },
         {
           id: 22,
           time: "00:00:12",
@@ -453,6 +459,20 @@ try {
       JSON.stringify(edges),
     );
   };
+  const expectPlayingFrom = (start) =>
+    page.waitForFunction(
+      (t) => {
+        const v = document.querySelector("video");
+        return (
+          !v.paused &&
+          !v.seeking &&
+          v.currentTime >= t - 0.01 &&
+          v.currentTime < t + 0.5
+        );
+      },
+      start,
+      { timeout: 2000 },
+    );
   for (const fullscreen of [false, true]) {
     if (fullscreen) {
       await player.hover();
@@ -507,17 +527,49 @@ try {
       }, seconds);
       await page.keyboard.press("Escape");
     }
-    await button("Clip Saved at 00:00:08, 2 of 2").first().waitFor();
+    const clipMarker = button("Clip Saved at 00:00:08, 2 of 2").first();
+    await clipMarker.waitFor();
     await checkReplayBand("00:00:02", 0, 2);
-    await checkReplayBand("00:00:07", 3.75, 7);
     const replay = button("Replay Saved at 00:00:07").first();
+    const expectBands = async (...ids) => {
+      const shown = await replay.evaluate((el) =>
+        [...el.parentElement.querySelectorAll("[data-bookmark-range]")].map(
+          (band) => Number(band.dataset.bookmarkRange),
+        ),
+      );
+      assert.deepEqual(
+        shown.sort((a, b) => a - b),
+        ids.sort((a, b) => a - b),
+      );
+    };
+    await player.hover();
+    await expectBands(25, 28);
+    await seek(11);
+    await checkReplayBand("00:00:07", 3.75, 7);
+    await expectBands(25, 26, 28);
+    assert.ok(await player.evaluate((v) => v.paused && v.currentTime === 11));
     assert.match(
       await replay.getAttribute("title"),
       /00:03\.750 – 00:07\.000 \(00:03\.250\)/,
     );
     await replay.click();
+    await expectPlayingFrom(3.75);
     await button("Open Replay").waitFor();
-    await page.keyboard.press("Escape");
+    await player.hover();
+    await expectBands(25, 26, 28);
+    await clipMarker.hover();
+    await expectBands(21, 25, 28);
+    await player.hover();
+    await expectBands(25, 26, 28);
+    await player.click();
+    await expectBands(25, 28);
+    await seek(11);
+    await clipMarker.click();
+    await expectPlayingFrom(5.5);
+    await player.hover();
+    await expectBands(21, 25, 28);
+    await player.click();
+    await expectBands(25, 28);
     assert.doesNotMatch(
       await button("Replay Saved at 00:00:10").first().getAttribute("title"),
       /–/,
@@ -658,6 +710,10 @@ try {
   await page.locator('[data-content-id="new-highlight"]').click();
   await isPlayingFile("X:/highlight.mp4");
   await checkReplayBand("00:00:04", 3, 4);
+  await seek(10);
+  await button("Replay Saved at 00:00:04").click();
+  await expectPlayingFrom(3);
+  await page.keyboard.press("Escape");
   await seek(1.25);
   await button("Open Full Session").click();
   await isPlayingFile("X:/source.mp4");
@@ -666,7 +722,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Clip editor, individual bookmarks, legacy highlights and rapid timeline zoom passed.",
+    "Clip editor, overlapping bookmark ranges, playback from range starts and timeline navigation passed.",
   );
 } finally {
   await browser?.close();

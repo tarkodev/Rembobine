@@ -6,7 +6,8 @@ import { formatTime, formatTimecode, timeStringToSeconds } from '../Utils/Number
 
 interface BookmarkTrackProps {
   bookmarks: Bookmark[];
-  replayStarts: ReadonlyMap<number, number>;
+  rangeStarts: ReadonlyMap<number, number>;
+  selectedBookmarkId?: number;
   duration: number;
   icons: Record<BookmarkType, LucideIcon>;
   label: (type: BookmarkType) => string;
@@ -25,6 +26,21 @@ interface Marker {
 
 function markerTimeLabel({ bookmark, time }: Marker) {
   return bookmark.type === BookmarkType.ScreenshotSaved ? formatTime(time) : formatTimecode(time);
+}
+
+function overlappingRangeIds(markers: Marker[]) {
+  const ranges = markers.filter((m): m is Marker & { start: number } => m.start !== undefined);
+  ranges.sort((a, b) => a.start - b.start);
+  const ids = new Set<number>();
+  let furthest: Marker | undefined;
+  for (const range of ranges) {
+    if (furthest && range.start < furthest.time) {
+      ids.add(furthest.bookmark.id);
+      ids.add(range.bookmark.id);
+    }
+    if (!furthest || range.time > furthest.time) furthest = range;
+  }
+  return ids;
 }
 
 const MARKER_WIDTH = 22;
@@ -79,7 +95,8 @@ function layoutMarkers(markers: Marker[], width: number, duration: number) {
 
 export default memo(function BookmarkTrack({
   bookmarks,
-  replayStarts,
+  rangeStarts,
+  selectedBookmarkId,
   duration,
   icons,
   label,
@@ -126,10 +143,7 @@ export default memo(function BookmarkTrack({
           if (!Number.isFinite(sourceTime) || sourceTime < 0) return [];
           // A final frame can round slightly past the duration reported by the decoder.
           const time = Math.min(sourceTime, duration);
-          const start =
-            bookmark.type === BookmarkType.ClipSaved && bookmark.clipStart
-              ? timeStringToSeconds(bookmark.clipStart)
-              : replayStarts.get(bookmark.id);
+          const start = rangeStarts.get(bookmark.id);
           return [
             {
               bookmark,
@@ -139,8 +153,10 @@ export default memo(function BookmarkTrack({
           ];
         })
         .sort((a, b) => a.time - b.time),
-    [bookmarks, replayStarts, duration],
+    [bookmarks, rangeStarts, duration],
   );
+  const overlapping = useMemo(() => overlappingRangeIds(markers), [markers]);
+  const activeBandId = hovered && rangeStarts.has(hovered.id) ? hovered.id : selectedBookmarkId;
   const { positions, rows } = useMemo(
     () =>
       width > 0 && duration > 0
@@ -163,11 +179,13 @@ export default memo(function BookmarkTrack({
       style={{ height: (fullscreen ? 31 : markers.length ? 52 : 42) + (rows - 1) * MARKER_PITCH }}
     >
       {markers.map(({ bookmark, start, time }) =>
-        start === undefined ? null : (
+        start === undefined ||
+        (overlapping.has(bookmark.id) && activeBandId !== bookmark.id) ? null : (
           <span
             key={bookmark.id}
+            data-bookmark-range={bookmark.id}
             aria-hidden="true"
-            className={`absolute bottom-0 h-[5px] border-l transition-colors ${hovered?.id === bookmark.id ? 'z-10 bg-[#efaf2b] border-[#efaf2b]' : 'bg-[#efaf2b]/30 border-[#efaf2b]/60'}`}
+            className={`absolute bottom-0 h-[5px] border-l transition-colors ${activeBandId === bookmark.id ? 'z-10 bg-[#efaf2b] border-[#efaf2b]' : 'bg-[#efaf2b]/30 border-[#efaf2b]/60'}`}
             style={{
               left: `${(start / duration) * 100}%`,
               width: `${((time - start) / duration) * 100}%`,

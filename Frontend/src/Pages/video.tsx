@@ -2154,14 +2154,19 @@ export default function VideoComponent({ video }: { video: Content }) {
     return timelineBookmarks.filter((bookmark) => selectedBookmarkTypes.has(bookmark.type));
   }, [timelineBookmarks, selectedBookmarkTypes]);
 
-  const replayStarts = useMemo(() => {
+  const bookmarkRangeStarts = useMemo(() => {
     const starts = new Map<number, number>();
-    const replays = filteredBookmarks.filter((b) => b.type === BookmarkType.ReplaySaved);
-    const cuts = replays.some((b) => b.inherited)
+    const cuts = filteredBookmarks.some((b) => b.type === BookmarkType.ReplaySaved && b.inherited)
       ? (video.sourceExcerpts ??
         findSourceExcerpts(video.id, BookmarkType.ClipSaved, appState.content, appState.recording))
       : [];
-    for (const bookmark of replays) {
+    for (const bookmark of filteredBookmarks) {
+      if (bookmark.type === BookmarkType.ClipSaved && bookmark.clipStart) {
+        const start = timeStringToSeconds(bookmark.clipStart);
+        if (start >= 0 && start <= timeStringToSeconds(bookmark.time))
+          starts.set(bookmark.id, start);
+      }
+      if (bookmark.type !== BookmarkType.ReplaySaved) continue;
       const media = getBookmarkMedia(bookmark);
       if (media?.type !== 'video' || !media.video.duration) continue;
       const length = timeStringToSeconds(media.video.duration);
@@ -2199,13 +2204,12 @@ export default function VideoComponent({ video }: { video: Content }) {
   const bookmarkStartTime = useCallback(
     (bookmark: Bookmark) => {
       const end = timeStringToSeconds(bookmark.time);
-      if (bookmark.type === BookmarkType.ClipSaved && bookmark.clipStart) {
-        const start = timeStringToSeconds(bookmark.clipStart);
-        if (start >= 0 && start <= end) return start;
-      }
-      return getBookmarkPlaybackStart(end, bookmark.type, video, settings);
+      return (
+        bookmarkRangeStarts.get(bookmark.id) ??
+        getBookmarkPlaybackStart(end, bookmark.type, video, settings)
+      );
     },
-    [video, settings],
+    [bookmarkRangeStarts, video, settings],
   );
 
   const seekToBookmark = useCallback(
@@ -2215,11 +2219,12 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (player) {
         if (bookmark.type === BookmarkType.ScreenshotSaved) player.pause();
         player.currentTime = seekTo;
-        if (bookmark.type === BookmarkType.ClipSaved) void player.play().catch(() => {});
+        if (bookmark.type === BookmarkType.ClipSaved || bookmarkRangeStarts.has(bookmark.id))
+          void player.play().catch(() => {});
       }
       setCurrentTime(seekTo);
     },
-    [bookmarkStartTime],
+    [bookmarkStartTime, bookmarkRangeStarts],
   );
 
   const selectBookmark = useCallback(
@@ -2570,7 +2575,8 @@ export default function VideoComponent({ video }: { video: Content }) {
                   {isFullscreen && settings.showBookmarksInFullscreen && duration > 0 && (
                     <BookmarkTrack
                       bookmarks={filteredBookmarks}
-                      replayStarts={replayStarts}
+                      rangeStarts={bookmarkRangeStarts}
+                      selectedBookmarkId={bookmarkMenu?.bookmark.id}
                       duration={duration}
                       icons={bookmarkIcons}
                       label={bookmarkLabel}
@@ -2820,7 +2826,8 @@ export default function VideoComponent({ video }: { video: Content }) {
               {bookmarksReady && (
                 <BookmarkTrack
                   bookmarks={filteredBookmarks}
-                  replayStarts={replayStarts}
+                  rangeStarts={bookmarkRangeStarts}
+                  selectedBookmarkId={bookmarkMenu?.bookmark.id}
                   rulerWidth={duration * pixelsPerSecond}
                   duration={duration}
                   icons={bookmarkIcons}
