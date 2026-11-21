@@ -445,6 +445,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       setWaitingForFrame(false);
     }
   };
+  const [selectedBookmarkId, setSelectedBookmarkId] = useState<number>();
   const [bookmarkMenu, setBookmarkMenu] = useState<{
     bookmark: Bookmark;
     trigger: HTMLElement;
@@ -2229,6 +2230,7 @@ export default function VideoComponent({ video }: { video: Content }) {
 
   const selectBookmark = useCallback(
     (bookmark: Bookmark, trigger: HTMLElement) => {
+      setSelectedBookmarkId(bookmark.id);
       seekToBookmark(bookmark);
       if (bookmarkMediaNames[bookmark.type]) {
         setBookmarkMenu({ bookmark, trigger });
@@ -2576,7 +2578,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                     <BookmarkTrack
                       bookmarks={filteredBookmarks}
                       rangeStarts={bookmarkRangeStarts}
-                      selectedBookmarkId={bookmarkMenu?.bookmark.id}
+                      selectedBookmarkId={selectedBookmarkId}
                       duration={duration}
                       icons={bookmarkIcons}
                       label={bookmarkLabel}
@@ -2827,7 +2829,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                 <BookmarkTrack
                   bookmarks={filteredBookmarks}
                   rangeStarts={bookmarkRangeStarts}
-                  selectedBookmarkId={bookmarkMenu?.bookmark.id}
+                  selectedBookmarkId={selectedBookmarkId}
                   rulerWidth={duration * pixelsPerSecond}
                   duration={duration}
                   icons={bookmarkIcons}

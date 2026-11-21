@@ -590,10 +590,25 @@ try {
     await player.hover();
     await expectBand(26);
     await player.click();
-    await expectBand();
+    await expectBand(26);
     await expectPausedAt(3.75);
     await page.keyboard.press("k");
     await expectPausedAt(3.75);
+    await replay.click();
+    const seekTrack = page.locator(
+      fullscreen ? ".player-seek" : ".ticks-container",
+    );
+    await seekTrack.click({ position: { x: 40, y: fullscreen ? 8 : 2 } });
+    await button("Open Replay").waitFor({ state: "hidden" });
+    await page.waitForFunction(() => {
+      const v = document.querySelector("video");
+      return v.paused && !v.seeking && v.currentTime < 2;
+    });
+    await expectBand(26);
+    await checkReplayBand("00:00:02", 0, 2);
+    await expectBand(25);
+    await player.hover();
+    await expectBand(26);
     if (!fullscreen) {
       await replay.click();
       await button("Open Replay").click();
@@ -609,7 +624,7 @@ try {
     await player.hover();
     await expectBand(21);
     await player.click();
-    await expectBand();
+    await expectBand(21);
     await expectPausedAt(5.5);
     await button("Play").first().click();
     await expectPlayingFrom(5.5);
