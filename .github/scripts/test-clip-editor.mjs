@@ -529,24 +529,29 @@ try {
     }
     const clipMarker = button("Clip Saved at 00:00:08, 2 of 2").first();
     await clipMarker.waitFor();
-    await checkReplayBand("00:00:02", 0, 2);
     const replay = button("Replay Saved at 00:00:07").first();
-    const expectBands = async (...ids) => {
+    const expectBand = async (id) => {
       const shown = await replay.evaluate((el) =>
         [...el.parentElement.querySelectorAll("[data-bookmark-range]")].map(
           (band) => Number(band.dataset.bookmarkRange),
         ),
       );
-      assert.deepEqual(
-        shown.sort((a, b) => a - b),
-        ids.sort((a, b) => a - b),
-      );
+      assert.deepEqual(shown, id === undefined ? [] : [id]);
     };
     await player.hover();
-    await expectBands(25, 28);
+    await expectBand();
+    await checkReplayBand("00:00:02", 0, 2);
+    await expectBand(25);
+    await player.hover();
+    await expectBand();
+    const isolatedClip = button("Clip Saved at 00:00:09").first();
+    await isolatedClip.focus();
+    await expectBand(28);
+    await page.keyboard.press("Tab");
+    await expectBand();
     await seek(11);
     await checkReplayBand("00:00:07", 3.75, 7);
-    await expectBands(25, 26, 28);
+    await expectBand(26);
     assert.ok(await player.evaluate((v) => v.paused && v.currentTime === 11));
     assert.match(
       await replay.getAttribute("title"),
@@ -556,20 +561,20 @@ try {
     await expectPlayingFrom(3.75);
     await button("Open Replay").waitFor();
     await player.hover();
-    await expectBands(25, 26, 28);
+    await expectBand(26);
     await clipMarker.hover();
-    await expectBands(21, 25, 28);
+    await expectBand(21);
     await player.hover();
-    await expectBands(25, 26, 28);
+    await expectBand(26);
     await player.click();
-    await expectBands(25, 28);
+    await expectBand();
     await seek(11);
     await clipMarker.click();
     await expectPlayingFrom(5.5);
     await player.hover();
-    await expectBands(21, 25, 28);
+    await expectBand(21);
     await player.click();
-    await expectBands(25, 28);
+    await expectBand();
     assert.doesNotMatch(
       await button("Replay Saved at 00:00:10").first().getAttribute("title"),
       /–/,
@@ -722,7 +727,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Clip editor, overlapping bookmark ranges, playback from range starts and timeline navigation passed.",
+    "Clip editor, on-demand bookmark ranges, playback from range starts and timeline navigation passed.",
   );
 } finally {
   await browser?.close();
