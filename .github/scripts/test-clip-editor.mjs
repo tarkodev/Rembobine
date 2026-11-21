@@ -373,6 +373,7 @@ try {
           highlightPadding: { before: 1.25, after: 2 },
         },
         { id: 32, time: "00:00:11", type: "Goal" },
+        { id: 33, time: "00:00:03.125", type: "Manual" },
         { id: 25, time: "00:00:02", type: "ReplaySaved", mediaId: "replay" },
         { id: 26, time: "00:00:07", type: "ReplaySaved", mediaId: "replay" },
         { id: 27, time: "00:00:10", type: "ReplaySaved" },
@@ -679,6 +680,16 @@ try {
     await player.click();
     await expectPausedAt(8.5);
     await expectBand(32);
+    const manual = button("Manual at 00:00:03.125").first();
+    await manual.click();
+    await expectPausedAt(3.125);
+    await expectBand();
+    await seek(1);
+    await page.keyboard.press("Space");
+    await expectPlayingFrom(1);
+    await manual.click();
+    await expectPlayingFrom(3.125);
+    await expectBand();
     let previousRight = 0;
     for (let i = 1; i <= 4; i++) {
       const capture = button(`Screenshot Saved at 00:00:12, ${i} of 4`).first();

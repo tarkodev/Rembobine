@@ -32,8 +32,7 @@ export function getBookmarkPlaybackStart(
   session: Content,
   settings: Settings,
 ): number {
-  if (type === BookmarkType.ScreenshotSaved) return time;
-  if (type === BookmarkType.Manual) return Math.max(0, time - 10);
+  if (type === BookmarkType.Manual || type === BookmarkType.ScreenshotSaved) return time;
 
   return Math.max(0, time - getGameHighlightPadding(session, settings).before);
 }
