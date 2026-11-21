@@ -495,6 +495,7 @@ try {
     }
     const pairButton = (i) =>
       button(`Screenshot Saved at ${times[i]}, ${(i % 2) + 1} of 2`).first();
+    await seek(2);
     for (let i = 0; i < 4; i++) {
       const marker = pairButton(i);
       if (i === 0) await marker.focus();
@@ -544,6 +545,8 @@ try {
         );
         await page.keyboard.press("Space");
         await expectPlayingFrom(seconds);
+        await pairButton(0).click();
+        await expectPlayingFrom(0);
         await page.keyboard.press("Space");
         assert.ok(await player.evaluate((v) => v.paused));
         await openScreenshot.waitFor();

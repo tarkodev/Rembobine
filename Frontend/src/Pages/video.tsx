@@ -2219,10 +2219,7 @@ export default function VideoComponent({ video }: { video: Content }) {
     (bookmark: Bookmark) => {
       const seekTo = bookmarkStartTime(bookmark);
       const player = videoRef.current;
-      if (player) {
-        if (bookmark.type === BookmarkType.ScreenshotSaved) player.pause();
-        player.currentTime = seekTo;
-      }
+      if (player) player.currentTime = seekTo;
       setCurrentTime(seekTo);
     },
     [bookmarkStartTime, videoRef],
