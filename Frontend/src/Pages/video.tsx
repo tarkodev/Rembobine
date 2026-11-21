@@ -179,7 +179,7 @@ export default function VideoComponent({ video }: { video: Content }) {
   const updateSettings = useSettingsUpdater();
   const { uploads } = useUploads();
   const { openModal, closeModal, isModalOpen } = useModal();
-  const { setSelectedVideo, playlist, resumePlayback, openLinkedMedia, goBack } =
+  const { videoRef, setSelectedVideo, playlist, resumePlayback, openLinkedMedia, goBack } =
     useSelectedVideo();
 
   // Skip items deleted since the list was opened
@@ -230,7 +230,6 @@ export default function VideoComponent({ video }: { video: Content }) {
     !!adjustedCut;
 
   // Refs
-  const videoRef = useRef<HTMLVideoElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -665,14 +664,9 @@ export default function VideoComponent({ video }: { video: Content }) {
 
       // Space to toggle play/pause globally (unless typing)
       if ((e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') && !isTyping) {
-        if (
-          target instanceof HTMLElement &&
-          target.closest('[data-bookmark-control], [data-player-button]')
-        )
-          return;
-        if (e.repeat) return; // avoid rapid toggle on key repeat
+        if (isModalOpen || target.closest?.('dialog, [data-player-button]')) return;
         e.preventDefault();
-        handlePlayPause();
+        if (!e.repeat) handlePlayPause();
         return;
       }
 
@@ -733,9 +727,8 @@ export default function VideoComponent({ video }: { video: Content }) {
         const vidEl = videoRef.current;
 
         if (key === 'k') {
-          if (e.repeat) return;
           e.preventDefault();
-          handlePlayPause();
+          vidEl?.pause();
           return;
         }
         if (key === 'j' || key === 'l') {
@@ -786,7 +779,16 @@ export default function VideoComponent({ video }: { video: Content }) {
       vid.removeEventListener('ratechange', onRateChange);
       window.removeEventListener('keydown', handleKeyDown, keyOptions as any);
     };
-  }, [volume, isMuted, isFullscreen, audioTracks.isMultiTrack, playbackRate, settings.frameRate]);
+  }, [
+    volume,
+    isMuted,
+    isFullscreen,
+    audioTracks.isMultiTrack,
+    playbackRate,
+    settings.frameRate,
+    isModalOpen,
+    videoRef,
+  ]);
 
   // Per-segment audio override state, kept in refs for the rAF loop below.
   // `segmentsDirtyRef` is separate from the id ref because `null` is already
@@ -1246,7 +1248,7 @@ export default function VideoComponent({ video }: { video: Content }) {
       e.stopPropagation();
       return;
     }
-    handlePlayPause();
+    videoRef.current?.pause();
   };
 
   // Fullscreen controls: request browser fullscreen and ask backend for OS-level fullscreen
@@ -2219,12 +2221,10 @@ export default function VideoComponent({ video }: { video: Content }) {
       if (player) {
         if (bookmark.type === BookmarkType.ScreenshotSaved) player.pause();
         player.currentTime = seekTo;
-        if (bookmark.type === BookmarkType.ClipSaved || bookmarkRangeStarts.has(bookmark.id))
-          void player.play().catch(() => {});
       }
       setCurrentTime(seekTo);
     },
-    [bookmarkStartTime, bookmarkRangeStarts],
+    [bookmarkStartTime, videoRef],
   );
 
   const selectBookmark = useCallback(
@@ -3126,6 +3126,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                 <button
                   onClick={handlePlayPause}
                   className="h-10 text-gray-300 btn btn-sm btn-secondary hover:text-accent join-item active:translate-none!"
+                  aria-label={isPlaying ? 'Pause' : 'Play'}
                   data-tip={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}

@@ -153,6 +153,20 @@ try {
   await page.goto("http://editor.test/");
   await page.locator('[data-content-id="session"]').click();
   const player = page.locator("video").first();
+  const expectPausedAt = (time) =>
+    page.waitForFunction(
+      (t) => {
+        const v = document.querySelector("video");
+        return (
+          v?.readyState >= 2 &&
+          v.paused &&
+          !v.seeking &&
+          Math.abs(v.currentTime - t) < 0.01
+        );
+      },
+      time,
+      { timeout: 2000 },
+    );
   const button = (name) =>
     page.getByRole("button", { name, exact: typeof name === "string" });
   const lastExport = () =>
@@ -374,6 +388,7 @@ try {
                   id: "replay",
                   type: "Buffer",
                   duration: "00:00:03.250",
+                  filePath: "X:/replay.mp4",
                 },
                 { ...session, id: "legacy-highlight", type: "Highlight" },
               ],
@@ -521,10 +536,18 @@ try {
         assert.ok(footprint.left >= previous.x + previous.width + 2);
       }
       await marker.click();
-      await page.waitForFunction((t) => {
-        const v = document.querySelector("video");
-        return v.paused && Math.abs(v.currentTime - t) < 0.001;
-      }, seconds);
+      await expectPausedAt(seconds);
+      if (i === 2) {
+        const openScreenshot = button("Open Screenshot");
+        assert.ok(
+          await openScreenshot.evaluate((b) => b === document.activeElement),
+        );
+        await page.keyboard.press("Space");
+        await expectPlayingFrom(seconds);
+        await page.keyboard.press("Space");
+        assert.ok(await player.evaluate((v) => v.paused));
+        await openScreenshot.waitFor();
+      }
       await page.keyboard.press("Escape");
     }
     const clipMarker = button("Clip Saved at 00:00:08, 2 of 2").first();
@@ -558,7 +581,7 @@ try {
       /00:03\.750 – 00:07\.000 \(00:03\.250\)/,
     );
     await replay.click();
-    await expectPlayingFrom(3.75);
+    await expectPausedAt(3.75);
     await button("Open Replay").waitFor();
     await player.hover();
     await expectBand(26);
@@ -568,13 +591,43 @@ try {
     await expectBand(26);
     await player.click();
     await expectBand();
+    await expectPausedAt(3.75);
+    await page.keyboard.press("k");
+    await expectPausedAt(3.75);
+    if (!fullscreen) {
+      await replay.click();
+      await button("Open Replay").click();
+      await isPlayingFile("X:/replay.mp4");
+      await expectPausedAt(0);
+      await page.keyboard.press("Escape");
+      await isPlayingFile("X:/source.mp4");
+      await expectPausedAt(3.75);
+    }
     await seek(11);
     await clipMarker.click();
-    await expectPlayingFrom(5.5);
+    await expectPausedAt(5.5);
     await player.hover();
     await expectBand(21);
     await player.click();
     await expectBand();
+    await expectPausedAt(5.5);
+    await button("Play").first().click();
+    await expectPlayingFrom(5.5);
+    await replay.click();
+    await expectPlayingFrom(3.75);
+    if (fullscreen) {
+      await page.keyboard.press("Escape");
+    } else {
+      await button("Open Replay").click();
+      await isPlayingFile("X:/replay.mp4");
+      await button("Pause").first().click();
+      await page.keyboard.press("Escape");
+      await isPlayingFile("X:/source.mp4");
+      await button("Play").first().waitFor();
+      assert.ok(
+        await player.evaluate((v) => v.paused && v.currentTime >= 3.75),
+      );
+    }
     assert.doesNotMatch(
       await button("Replay Saved at 00:00:10").first().getAttribute("title"),
       /–/,
@@ -714,10 +767,11 @@ try {
   await button("Highlights").click();
   await page.locator('[data-content-id="new-highlight"]').click();
   await isPlayingFile("X:/highlight.mp4");
+  await expectPausedAt(0);
   await checkReplayBand("00:00:04", 3, 4);
   await seek(10);
   await button("Replay Saved at 00:00:04").click();
-  await expectPlayingFrom(3);
+  await expectPausedAt(3);
   await page.keyboard.press("Escape");
   await seek(1.25);
   await button("Open Full Session").click();
@@ -727,7 +781,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Clip editor, on-demand bookmark ranges, playback from range starts and timeline navigation passed.",
+    "Clip editor, bookmark ranges, Space playback and pause-preserving navigation passed.",
   );
 } finally {
   await browser?.close();

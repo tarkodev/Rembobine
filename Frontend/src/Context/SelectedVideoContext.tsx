@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useCallback,
+  useRef,
+  type RefObject,
+} from 'react';
 import type { Content, Screenshot } from '../Models/types';
 
 export type LinkedMedia =
@@ -25,6 +33,7 @@ interface VideoSelection {
 }
 
 interface SelectedVideoContextProps {
+  videoRef: RefObject<HTMLVideoElement | null>;
   selectedVideo: Content | null;
   linkedScreenshot: Screenshot | null;
   // Ids of the list the video was opened from, for previous/next navigation
@@ -40,11 +49,14 @@ const SelectedVideoContext = createContext<SelectedVideoContextProps | undefined
 
 export const SelectedVideoProvider = ({ children }: { children: ReactNode }) => {
   const [selection, setSelection] = useState<VideoSelection>({ video: null, playlist: [] });
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const setSelectedVideo = useCallback((video: Content | null, list?: string[]) => {
+    const paused = videoRef.current?.paused;
     setSelection((previous) => ({
       video,
       playlist: video ? (list ?? previous.playlist) : [],
+      resume: (paused ?? previous.resume?.paused) ? { time: 0, paused: true } : undefined,
     }));
   }, []);
 
@@ -55,16 +67,13 @@ export const SelectedVideoProvider = ({ children }: { children: ReactNode }) => 
         screenshot: media.type === 'screenshot' ? media.screenshot : undefined,
         playlist: media.type === 'video' ? (media.playlist ?? []) : [],
         resume:
-          startTime === undefined
-            ? undefined
-            : {
-                time: startTime,
-                paused:
-                  (media.type === 'video' ? media.startPaused : undefined) ??
-                  playback?.paused ??
-                  true,
-                previewUrl: media.type === 'video' ? media.previewUrl : undefined,
-              },
+          media.type === 'video'
+            ? {
+                time: startTime ?? 0,
+                paused: media.startPaused ?? playback?.paused ?? startTime !== undefined,
+                previewUrl: media.previewUrl,
+              }
+            : playback,
         previous: playback ? { ...current, resume: playback } : current,
       }));
     },
@@ -72,12 +81,21 @@ export const SelectedVideoProvider = ({ children }: { children: ReactNode }) => 
   );
 
   const goBack = useCallback(() => {
-    setSelection((current) => current.previous ?? { video: null, playlist: [] });
+    const paused = videoRef.current?.paused;
+    setSelection((current) => {
+      const previous: VideoSelection = current.previous ?? { video: null, playlist: [] };
+      if (!(paused ?? current.resume?.paused)) return previous;
+      return {
+        ...previous,
+        resume: { time: 0, ...previous.resume, paused: true },
+      };
+    });
   }, []);
 
   return (
     <SelectedVideoContext.Provider
       value={{
+        videoRef,
         selectedVideo: selection.video,
         linkedScreenshot: selection.screenshot ?? null,
         playlist: selection.playlist,
