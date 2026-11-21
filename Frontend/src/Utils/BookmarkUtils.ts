@@ -7,6 +7,25 @@ import {
 } from '../Models/types';
 import { timeStringToSeconds } from './NumberUtils';
 
+export interface BookmarkRange {
+  start: number;
+  end: number;
+}
+
+export function getGameHighlightPadding(session: Content, settings: Settings) {
+  const game = settings.games.find(
+    (g) =>
+      (g.igdbId != null && g.igdbId === session.igdbId) ||
+      g.name.toLowerCase() === session.game?.toLowerCase(),
+  );
+  return (
+    game?.highlightPaddingOverride ?? {
+      before: settings.highlightPaddingBefore,
+      after: settings.highlightPaddingAfter,
+    }
+  );
+}
+
 export function getBookmarkPlaybackStart(
   time: number,
   type: BookmarkType,
@@ -16,13 +35,7 @@ export function getBookmarkPlaybackStart(
   if (type === BookmarkType.ScreenshotSaved) return time;
   if (type === BookmarkType.Manual) return Math.max(0, time - 10);
 
-  const game = settings.games.find(
-    (g) =>
-      (g.igdbId != null && g.igdbId === session.igdbId) ||
-      g.name.toLowerCase() === session.game?.toLowerCase(),
-  );
-  const lead = game?.highlightPaddingOverride?.before ?? settings.highlightPaddingBefore;
-  return Math.max(0, time - lead);
+  return Math.max(0, time - getGameHighlightPadding(session, settings).before);
 }
 
 export interface SourceExcerpt {
@@ -30,6 +43,22 @@ export interface SourceExcerpt {
   start: number;
   end: number;
   offset?: number;
+}
+
+// A montage may link the same footage through both a replay and its original session.
+export function getExcerptBounds(cuts: SourceExcerpt[], time: number): BookmarkRange | undefined {
+  let bounds: BookmarkRange | undefined;
+  for (const cut of cuts) {
+    if (cut.offset === undefined) continue;
+    const end = cut.offset + cut.end - cut.start;
+    if (time >= cut.offset && time < end) {
+      bounds = {
+        start: Math.max(bounds?.start ?? 0, cut.offset),
+        end: Math.min(bounds?.end ?? Infinity, end),
+      };
+    }
+  }
+  return bounds;
 }
 
 export function findSourceExcerpts(

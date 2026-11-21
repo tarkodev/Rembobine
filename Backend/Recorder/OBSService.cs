@@ -411,7 +411,12 @@ namespace Segra.Backend.Recorder
 
                 List<Bookmark> InReplay(IEnumerable<Bookmark> bookmarks) => bookmarks
                     .Where(b => b.Type is not (BookmarkType.ReplaySaved or BookmarkType.ScreenshotSaved or BookmarkType.ClipSaved))
-                    .Select(b => new Bookmark { Id = b.Id, Type = b.Type, Subtype = b.Subtype, Time = recording.StartTime + b.Time - startedAt })
+                    .Select(b =>
+                    {
+                        var replayBookmark = b.AtTime(recording.StartTime + b.Time - startedAt);
+                        replayBookmark.Id = b.Id;
+                        return replayBookmark;
+                    })
                     .Where(b => b.Time >= TimeSpan.Zero && b.Time <= duration)
                     .ToList();
 
@@ -2016,6 +2021,7 @@ namespace Segra.Backend.Recorder
                 return true;
             }
 
+            var (before, after) = GameSettingsService.ResolveHighlightPadding(exePath);
             AppState.Instance.Recording = new Recording()
             {
                 StartTime = startTime ?? DateTime.Now,
@@ -2030,6 +2036,7 @@ namespace Segra.Backend.Recorder
                 AudioTrackNames = actualAudioTrackNames,
                 AudioTrackTypes = actualAudioTrackTypes,
                 StartSettings = startSettings,
+                HighlightPadding = new() { Before = before, After = after },
                 Webcam = webcamLayer
             };
             AppState.Instance.PreRecording = null;

@@ -83,6 +83,15 @@ try {
         airplaneMode: true,
         confirmBeforeDeleting: true,
         showBookmarksInFullscreen: true,
+        highlightPaddingBefore: 4,
+        highlightPaddingAfter: 2,
+        games: [
+          {
+            name: "Fixture",
+            paths: [],
+            highlightPaddingOverride: { before: 2.5, after: 3 },
+          },
+        ],
         defaultMenuItem: "Full Sessions",
         clipClearSegmentsAfterCreatingClip: false,
       }),
@@ -357,6 +366,13 @@ try {
         mediaId: id === 3 ? undefined : String(id),
       }));
       bookmarks.push(
+        {
+          id: 31,
+          time: "00:00:05.500",
+          type: "Kill",
+          highlightPadding: { before: 1.25, after: 2 },
+        },
+        { id: 32, time: "00:00:11", type: "Goal" },
         { id: 25, time: "00:00:02", type: "ReplaySaved", mediaId: "replay" },
         { id: 26, time: "00:00:07", type: "ReplaySaved", mediaId: "replay" },
         { id: 27, time: "00:00:10", type: "ReplaySaved" },
@@ -453,8 +469,8 @@ try {
     zoomError.markerError < 2 && zoomError.cursorError < 3,
     JSON.stringify(zoomError),
   );
-  const checkReplayBand = async (time, start, end) => {
-    const marker = button(`Replay Saved at ${time}`).first();
+  const checkBand = async (label, start, end) => {
+    const marker = button(label).first();
     await marker.hover();
     const edges = await marker.evaluate((el) => {
       const track = el.parentElement;
@@ -566,7 +582,7 @@ try {
     };
     await player.hover();
     await expectBand();
-    await checkReplayBand("00:00:02", 0, 2);
+    await checkBand("Replay Saved at 00:00:02", 0, 2);
     await expectBand(25);
     await player.hover();
     await expectBand();
@@ -576,7 +592,7 @@ try {
     await page.keyboard.press("Tab");
     await expectBand();
     await seek(11);
-    await checkReplayBand("00:00:07", 3.75, 7);
+    await checkBand("Replay Saved at 00:00:07", 3.75, 7);
     await expectBand(26);
     assert.ok(await player.evaluate((v) => v.paused && v.currentTime === 11));
     assert.match(
@@ -608,7 +624,7 @@ try {
       return v.paused && !v.seeking && v.currentTime < 2;
     });
     await expectBand(26);
-    await checkReplayBand("00:00:02", 0, 2);
+    await checkBand("Replay Saved at 00:00:02", 0, 2);
     await expectBand(25);
     await player.hover();
     await expectBand(26);
@@ -652,6 +668,17 @@ try {
     );
     assert.equal(await button(/Clip Saved at 00:00:12/).count(), 0);
     assert.equal(await button(/^\d+ bookmarks$/).count(), 0);
+    await seek(1);
+    await checkBand("Kill at 00:00:05.500", 4.25, 7.5);
+    await button("Kill at 00:00:05.500").first().click();
+    await expectPausedAt(4.25);
+    await checkBand("Goal at 00:00:11", 8.5, 12);
+    await player.hover();
+    await expectBand(31);
+    await button("Goal at 00:00:11").first().click();
+    await player.click();
+    await expectPausedAt(8.5);
+    await expectBand(32);
     let previousRight = 0;
     for (let i = 1; i <= 4; i++) {
       const capture = button(`Screenshot Saved at 00:00:12, ${i} of 4`).first();
@@ -762,6 +789,7 @@ try {
                   type: "Highlight",
                   filePath: "X:/highlight.mp4",
                   bookmarks: [
+                    { id: 31, time: "00:00:01", type: "Kill" },
                     {
                       id: 30,
                       time: "00:00:04",
@@ -786,7 +814,8 @@ try {
   await page.locator('[data-content-id="new-highlight"]').click();
   await isPlayingFile("X:/highlight.mp4");
   await expectPausedAt(0);
-  await checkReplayBand("00:00:04", 3, 4);
+  await checkBand("Kill at 00:00:01", 0, 3);
+  await checkBand("Replay Saved at 00:00:04", 3, 4);
   await seek(10);
   await button("Replay Saved at 00:00:04").click();
   await expectPausedAt(3);

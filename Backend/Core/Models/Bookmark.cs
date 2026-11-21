@@ -11,6 +11,8 @@ namespace Segra.Backend.Core.Models
         public BookmarkSubtype? Subtype { get; set; }
         public TimeSpan Time { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public GameHighlightPaddingOverride? HighlightPadding { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? MediaId { get; set; }
         // A link carried into an excerpt is navigable, but does not identify the excerpt's source.
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -42,6 +44,7 @@ namespace Segra.Backend.Core.Models
             MediaId = MediaId,
             Inherited = Inherited,
             Time = time,
+            HighlightPadding = HighlightPadding,
             ClipOffset = ClipOffset,
             ClipStart = ClipStart + (time - Time)
         };

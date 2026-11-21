@@ -1312,6 +1312,9 @@ namespace Segra.Backend.Core.Models
         [JsonPropertyName("startSettings")]
         public JsonObject? StartSettings { get; set; }
 
+        [JsonIgnore]
+        public GameHighlightPaddingOverride? HighlightPadding { get; init; }
+
         // Webcam layout at start, with the session's webcam file when there is one
         [JsonIgnore]
         public WebcamLayer? Webcam { get; set; }
@@ -1325,6 +1328,8 @@ namespace Segra.Backend.Core.Models
             {
                 if (ContentService.IsDeletedMediaBookmark(bookmark))
                     return;
+                if (bookmark.Type.IncludeInHighlight())
+                    bookmark.HighlightPadding ??= HighlightPadding;
                 Bookmarks.Add(bookmark);
             }
             AppState.Instance.NotifyRecordingUpdated();

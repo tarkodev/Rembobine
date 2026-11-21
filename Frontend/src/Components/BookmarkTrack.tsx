@@ -2,11 +2,12 @@ import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { Skull, type LucideIcon } from 'lucide-react';
 import { BookmarkType, type Bookmark } from '../Models/types';
+import type { BookmarkRange } from '../Utils/BookmarkUtils';
 import { formatTime, formatTimecode, timeStringToSeconds } from '../Utils/NumberUtils';
 
 interface BookmarkTrackProps {
   bookmarks: Bookmark[];
-  rangeStarts: ReadonlyMap<number, number>;
+  ranges: ReadonlyMap<number, BookmarkRange>;
   selectedBookmarkId?: number;
   duration: number;
   icons: Record<BookmarkType, LucideIcon>;
@@ -21,7 +22,7 @@ interface BookmarkTrackProps {
 interface Marker {
   bookmark: Bookmark;
   time: number;
-  start?: number;
+  range?: BookmarkRange;
 }
 
 function markerTimeLabel({ bookmark, time }: Marker) {
@@ -80,7 +81,7 @@ function layoutMarkers(markers: Marker[], width: number, duration: number) {
 
 export default memo(function BookmarkTrack({
   bookmarks,
-  rangeStarts,
+  ranges,
   selectedBookmarkId,
   duration,
   icons,
@@ -128,19 +129,12 @@ export default memo(function BookmarkTrack({
           if (!Number.isFinite(sourceTime) || sourceTime < 0) return [];
           // A final frame can round slightly past the duration reported by the decoder.
           const time = Math.min(sourceTime, duration);
-          const start = rangeStarts.get(bookmark.id);
-          return [
-            {
-              bookmark,
-              time,
-              start: start !== undefined && start >= 0 && start < time ? start : undefined,
-            },
-          ];
+          return [{ bookmark, time, range: ranges.get(bookmark.id) }];
         })
         .sort((a, b) => a.time - b.time),
-    [bookmarks, rangeStarts, duration],
+    [bookmarks, ranges, duration],
   );
-  const activeBandId = hovered && rangeStarts.has(hovered.id) ? hovered.id : selectedBookmarkId;
+  const activeBandId = hovered && ranges.has(hovered.id) ? hovered.id : selectedBookmarkId;
   const activeMarker = markers.find((marker) => marker.bookmark.id === activeBandId);
   const { positions, rows } = useMemo(
     () =>
@@ -151,10 +145,14 @@ export default memo(function BookmarkTrack({
   );
 
   const markerDescription = (marker: Marker) => {
-    const { bookmark, time, start } = marker;
+    const { bookmark, range } = marker;
     const name = `${label(bookmark.type)}${bookmark.subtype ? ` · ${bookmark.subtype}` : ''}`;
-    if (start === undefined) return `${name} · ${markerTimeLabel(marker)}`;
-    return `${name} · ${formatTimecode(start)} – ${formatTimecode(time)} (${formatTimecode(time - start)})`;
+    if (!range) return `${name} · ${markerTimeLabel(marker)}`;
+    const description =
+      bookmark.type === BookmarkType.Kill || bookmark.type === BookmarkType.Goal
+        ? `${name} · ${markerTimeLabel(marker)}`
+        : name;
+    return `${description} · ${formatTimecode(range.start)} – ${formatTimecode(range.end)} (${formatTimecode(range.end - range.start)})`;
   };
 
   return (
@@ -163,14 +161,14 @@ export default memo(function BookmarkTrack({
       className={`z-20 pointer-events-none ${fullscreen ? 'absolute inset-x-[6px] bottom-[calc(50%+2px)]' : 'relative w-full'}`}
       style={{ height: (fullscreen ? 31 : markers.length ? 52 : 42) + (rows - 1) * MARKER_PITCH }}
     >
-      {activeMarker?.start !== undefined && (
+      {activeMarker?.range && activeMarker.range.end > activeMarker.range.start && (
         <span
           data-bookmark-range={activeMarker.bookmark.id}
           aria-hidden="true"
           className="absolute bottom-0 z-10 h-[5px] bg-[#efaf2b]"
           style={{
-            left: `${(activeMarker.start / duration) * 100}%`,
-            width: `${((activeMarker.time - activeMarker.start) / duration) * 100}%`,
+            left: `${(activeMarker.range.start / duration) * 100}%`,
+            width: `${((activeMarker.range.end - activeMarker.range.start) / duration) * 100}%`,
           }}
         />
       )}

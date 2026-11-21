@@ -5,7 +5,14 @@ import { useSettings, useSettingsUpdater } from '../Context/SettingsContext';
 import { useAppState } from '../Context/AppStateContext';
 import { contentTypeToFolderName, getContentFileUrl } from '../Utils/FileUtils';
 import { getScreenshotMediaId } from '../Utils/ScreenshotUtils';
-import { findSourceExcerpts, getBookmarkPlaybackStart } from '../Utils/BookmarkUtils';
+import {
+  findSourceExcerpts,
+  getBookmarkPlaybackStart,
+  getExcerptBounds,
+  getGameHighlightPadding,
+  type BookmarkRange,
+  type SourceExcerpt,
+} from '../Utils/BookmarkUtils';
 import { consumeEscape } from '../Utils/KeyboardUtils';
 import { formatTime, timeStringToSeconds } from '../Utils/NumberUtils';
 import { useSelectedVideo } from '../Context/SelectedVideoContext';
@@ -2157,48 +2164,57 @@ export default function VideoComponent({ video }: { video: Content }) {
     return timelineBookmarks.filter((bookmark) => selectedBookmarkTypes.has(bookmark.type));
   }, [timelineBookmarks, selectedBookmarkTypes]);
 
-  const bookmarkRangeStarts = useMemo(() => {
-    const starts = new Map<number, number>();
-    const cuts = filteredBookmarks.some((b) => b.type === BookmarkType.ReplaySaved && b.inherited)
-      ? (video.sourceExcerpts ??
-        findSourceExcerpts(video.id, BookmarkType.ClipSaved, appState.content, appState.recording))
-      : [];
+  const bookmarkRanges = useMemo(() => {
+    const ranges = new Map<number, BookmarkRange>();
+    const fallback = getGameHighlightPadding(video, settings);
+    let cuts: SourceExcerpt[] | undefined = video.sourceExcerpts;
+    const cutAt = (time: number) => {
+      if (video.type !== 'Clip' && video.type !== 'Highlight') return;
+      cuts ??= findSourceExcerpts(
+        video.id,
+        BookmarkType.ClipSaved,
+        appState.content,
+        appState.recording,
+      );
+      return getExcerptBounds(cuts, time);
+    };
     for (const bookmark of filteredBookmarks) {
+      const sourceTime = timeStringToSeconds(bookmark.time);
+      if (!Number.isFinite(sourceTime) || sourceTime < 0) continue;
+      const time = Math.min(sourceTime, duration);
+      if (bookmark.type === BookmarkType.Kill || bookmark.type === BookmarkType.Goal) {
+        const padding = bookmark.highlightPadding ?? fallback;
+        const cut = cutAt(time);
+        ranges.set(bookmark.id, {
+          start: Math.max(cut?.start ?? 0, time - Math.max(0, padding.before)),
+          end: Math.min(duration, cut?.end ?? duration, time + Math.max(0, padding.after)),
+        });
+        continue;
+      }
       if (bookmark.type === BookmarkType.ClipSaved && bookmark.clipStart) {
         const start = timeStringToSeconds(bookmark.clipStart);
-        if (start >= 0 && start <= timeStringToSeconds(bookmark.time))
-          starts.set(bookmark.id, start);
+        if (start >= 0 && start <= time) ranges.set(bookmark.id, { start, end: time });
       }
       if (bookmark.type !== BookmarkType.ReplaySaved) continue;
       const media = getBookmarkMedia(bookmark);
       if (media?.type !== 'video' || !media.video.duration) continue;
       const length = timeStringToSeconds(media.video.duration);
       if (!Number.isFinite(length) || length <= 0) continue;
-      const end = timeStringToSeconds(bookmark.time);
-      let start = Math.max(0, end - length);
+      let start = Math.max(0, sourceTime - length);
       if (bookmark.inherited) {
-        // In a montage, a replay cannot extend into footage from the preceding cut.
-        let cutStart: number | undefined;
-        for (const cut of cuts) {
-          if (
-            cut.offset !== undefined &&
-            cut.offset <= end &&
-            end < cut.offset + cut.end - cut.start
-          ) {
-            cutStart = Math.max(cutStart ?? 0, cut.offset);
-          }
-        }
-        if (cutStart === undefined) continue;
-        start = Math.max(start, cutStart);
+        const cut = cutAt(sourceTime);
+        if (!cut) continue;
+        start = Math.max(start, cut.start);
       }
-      starts.set(bookmark.id, start);
+      if (start <= time) ranges.set(bookmark.id, { start, end: time });
     }
-    return starts;
+    return ranges;
   }, [
     filteredBookmarks,
     getBookmarkMedia,
-    video.id,
-    video.sourceExcerpts,
+    video,
+    settings,
+    duration,
     appState.content,
     appState.recording,
   ]);
@@ -2208,11 +2224,11 @@ export default function VideoComponent({ video }: { video: Content }) {
     (bookmark: Bookmark) => {
       const end = timeStringToSeconds(bookmark.time);
       return (
-        bookmarkRangeStarts.get(bookmark.id) ??
+        bookmarkRanges.get(bookmark.id)?.start ??
         getBookmarkPlaybackStart(end, bookmark.type, video, settings)
       );
     },
-    [bookmarkRangeStarts, video, settings],
+    [bookmarkRanges, video, settings],
   );
 
   const seekToBookmark = useCallback(
@@ -2574,7 +2590,7 @@ export default function VideoComponent({ video }: { video: Content }) {
                   {isFullscreen && settings.showBookmarksInFullscreen && duration > 0 && (
                     <BookmarkTrack
                       bookmarks={filteredBookmarks}
-                      rangeStarts={bookmarkRangeStarts}
+                      ranges={bookmarkRanges}
                       selectedBookmarkId={selectedBookmarkId}
                       duration={duration}
                       icons={bookmarkIcons}
@@ -2825,7 +2841,7 @@ export default function VideoComponent({ video }: { video: Content }) {
               {bookmarksReady && (
                 <BookmarkTrack
                   bookmarks={filteredBookmarks}
-                  rangeStarts={bookmarkRangeStarts}
+                  ranges={bookmarkRanges}
                   selectedBookmarkId={selectedBookmarkId}
                   rulerWidth={duration * pixelsPerSecond}
                   duration={duration}

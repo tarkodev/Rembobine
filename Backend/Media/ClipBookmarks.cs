@@ -153,6 +153,12 @@ internal sealed class ClipBookmarks : IDisposable
             else if (bookmark.Time >= start && bookmark.Time < end)
             {
                 var point = bookmark.AtTime(bookmark.Time - start + offset);
+                if (bookmark.HighlightPadding is { } padding)
+                    point.HighlightPadding = new()
+                    {
+                        Before = Math.Min(padding.Before, (bookmark.Time - start).TotalSeconds),
+                        After = Math.Min(padding.After, (end - bookmark.Time).TotalSeconds)
+                    };
                 point.Inherited = bookmark.MediaId != null;
                 yield return point;
             }

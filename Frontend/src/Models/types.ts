@@ -180,6 +180,7 @@ export interface Hotkey {
 
 export interface Bookmark {
   id: number;
+  highlightPadding?: GameHighlightPaddingOverride;
   type: BookmarkType;
   subtype?: BookmarkSubtype;
   time: string;
